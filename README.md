@@ -1,2 +1,2 @@
-# Unity-Template-3D
-Unity 3D Game Template
+# Unity Game Project Templates
+My personal Unity game project templates
