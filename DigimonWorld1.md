@@ -10,159 +10,131 @@ A gameplay-focused recreation of Digimon World 1 in Unity. Not a pixel-perfect r
 - Placeholder music and SFX
 - Single-player
 
-## Core Systems
+## Implementation Order
 
-### Digimon System
-- Digimon data (species, stages, families, types, elements)
-- Individual Digimon instances (unique stats, age, lifespan)
-- Stats: HP, MP, Offense, Defense, Speed, Brains
-- Hidden stats: Happiness, Discipline, Weight, Tiredness, Hunger, Care Mistakes
-- Life stages: Digi-Egg → Baby → In-Training → Rookie → Champion → Ultimate
-- Death and reincarnation back to Digi-Egg
-- Personality / mood
+Ordered so each phase builds on the previous one. Anything later that needs an earlier system can assume it's already there.
 
-### Evolution System
-- Stage-based evolution (Rookie → Champion → Ultimate)
-- Evolution requirements (stats, care mistakes, weight, training, bonuses)
-- Devolution on death
-- Digitama (egg) generation with inherited bonuses
-- Evolution reveal/transition event
+---
 
-### Battle System
-- Real-time / action-command battles (AI-controlled partner)
-- Brains stat governs player control over moves
-- Techniques / special moves (MP cost, element, power)
-- Type and element advantages
-- Status effects (poison, paralysis, sleep, confusion, etc.)
-- Experience for stat gains (not traditional XP levels)
-- Recruitment / post-battle befriending
-- Fleeing, KO, and battle rewards (Bits, items, recruitment)
+### Phase 0 — Foundation
 
-### Stats & Leveling
-- Training-based stat growth (not XP levels)
-- Training facilities / mini-games feeding stats
-- Stat caps per stage
-- Tiredness and happiness gating training effectiveness
-- Bonus stat inheritance across generations
+Project plumbing. Nothing gameplay-facing yet, but everything else depends on it.
 
-### Digimon AI (Partner)
-- Autonomous behavior in battle and overworld
-- Obedience scaling with Brains and Discipline
-- Idle behaviors (wandering, reacting, sleeping, pooping)
-- Hunger/fatigue-driven requests
+1. **Input System** — keyboard, mouse, gamepad; action maps; rebinding hook
+2. **Audio System (bare)** — mixer buses (Master/Music/SFX/UI), one-shot helper, music player stub
+3. **UI Framework** — canvas setup, screen manager, transitions, base screen class
+4. **Debug Tools (bare)** — in-game console, toggleable overlay, FPS counter
+5. **Scene / Zone Loader** — async load/unload, loading screen, scene references
 
-### Enemy AI
-- Overworld encounter behaviors (patrol, chase, flee)
-- Battle AI (move selection, targeting, retreat thresholds)
-- Boss AI patterns
-- Recruitable NPC Digimon logic (conditions to join the city)
+### Phase 1 — The Player in a World
 
-### Player Movement
-- Third-person overworld traversal
-- Partner Digimon follow behavior
-- Interact / inspect prompts
-- Zone transitions between map areas
-- Camera control
+Goal: walk a capsule around a test zone with a camera.
 
-### World & Map System
-- File Island overworld with discrete zones
-- Zone loading/unloading
-- Waypoints and fast travel (if applicable)
-- Environmental interactables (trees, signs, items)
-- Day/night cycle
+6. **Player Movement** — third-person controller, walk/run, gravity, ground check
+7. **Camera** — follow camera, look control, collision avoidance
+8. **World & Map (one test zone)** — a single zone with walkable terrain and colliders
+9. **Zone Transitions** — trigger volumes swap zones via the scene loader
+10. **Interaction System** — raycast prompts, `IInteractable` interface, UI prompt
 
-### Dialogue System
-- Branching dialogue trees
-- NPC speaker data (portrait placeholder, name, voice cue)
-- Choice-driven responses
-- Conditional dialogue based on quest/world state
-- Text localization hook
+### Phase 2 — Companions, Conversations, Clocks
 
-### Cutscene System
-- Scripted sequences (camera, actors, dialogue, SFX)
-- Skippable cutscenes
-- Triggered cutscenes (zone entry, quest milestone, evolution)
-- Timeline-style authoring
+Goal: partner follows you; NPCs talk; the world has time.
 
-### Quest System
-- Main story quests
-- Side quests / recruitment quests
-- Quest states (inactive, active, completed, failed)
-- Objectives and subtasks
-- Rewards (items, recruits, world changes)
-- Quest log UI
+11. **Partner Digimon Follow** — AI-controlled companion, pathfinding/follow, idle behaviors
+12. **Dialogue System** — speaker data, branching trees, choice UI, conditional lines
+13. **NPC Entities** — dialogue-ready NPCs with patrol/idle behavior
+14. **Time System** — in-game clock, day/night cycle, time-gated hooks
+15. **HUD** — partner status bar, clock, zone name, currency readout
 
-### Recruitment / City-Building
-- Each recruited Digimon expands File City
-- City services unlocked by recruits (shop, clinic, farm, gym, etc.)
-- Recruit prerequisites and triggers
-- City progression tracker
+### Phase 3 — Digimon as Data
 
-### Item & Inventory System
-- Item categories (food, medicine, training, key items, evolution items)
-- Stackable inventory with cap
-- Using items on partner (feeding, healing, training aids)
-- Shop buy/sell
-- Equipment / accessory slots (if applicable)
-- Bits (currency)
+Goal: the partner is a real Digimon with stats, needs, and care.
 
-### Care System
-- Feeding (hunger, weight, poop)
-- Sleeping / resting (tiredness)
-- Bathroom / cleanliness (care mistakes if ignored)
-- Praise and scold (discipline, happiness)
-- Training sessions
-- Illness and medicine
+16. **Digimon Data Model** — species, stages, families, types, elements (ScriptableObjects)
+17. **Digimon Instance** — runtime stats, age, hidden stats (hunger, weight, tiredness, discipline, happiness, care mistakes)
+18. **Care System** — feeding, sleeping, bathroom, praise/scold, training stubs
+19. **Item & Inventory System** — item catalog, stackable inventory, use-on-partner, Bits currency
+20. **Status / Digimon Info UI** — stat screen, inventory screen
+21. **Training Facilities** — mini-game stubs that feed stats, tiredness/happiness gating
 
-### Save / Load System
-- Multiple save slots
-- Autosave on key events
-- Serialization of Digimon state, world state, quests, inventory, time
-- Save file versioning / migration
+### Phase 4 — Combat
 
-### UI & Menus
-- Main menu (new game, load, options)
-- HUD (partner status, time, minimap, currency)
-- Pause menu
-- Status / Digimon info screen
-- Inventory screen
-- Quest log
-- Recruitment roster / city view
-- Shop UI
-- Dialogue UI
-- Battle UI (HP/MP, commands, tech list)
-- Settings (audio, controls, graphics)
-- Save/load screen
+Goal: fight wild Digimon, win, lose, flee.
 
-### Audio System
-- Music playback with zone-based tracks
-- Crossfade between tracks
-- SFX bus (UI, combat, ambient, voice cues)
-- Volume mixer (master/music/SFX)
-- One-shot and looped SFX helpers
+22. **Techniques / Moves Data** — move list, MP cost, element, power
+23. **Battle System Core** — encounter start, turn/command flow, damage calc, type/element advantage
+24. **Enemy AI (Battle)** — move selection, targeting, retreat thresholds
+25. **Status Effects** — poison, paralysis, sleep, confusion, etc.
+26. **Battle UI** — HP/MP, commands, tech list, log
+27. **Brains-Driven Control** — obedience scaling with Brains/Discipline
+28. **Overworld Encounters** — patrol/chase/flee enemies, encounter trigger
 
-### Time System
-- In-game clock (minutes/hours/days)
-- Day/night cycle tied to world and AI
-- Digimon aging and lifespan tied to real/game time
-- Time-gated events (shops open, NPCs move)
+### Phase 5 — Progression & Story
 
-### Input System
-- Keyboard + mouse
-- Gamepad support
-- Rebindable controls
-- Context-sensitive prompts
+Goal: evolution, quests, recruitment, city growth.
 
-### Settings & Config
-- Graphics, audio, controls
-- Language selection hook
-- Accessibility options (text speed, subtitles)
+29. **Evolution System** — requirements, transition event, devolution, Digitama inheritance
+30. **Quest System** — states, objectives, rewards, quest log UI
+31. **Recruitment / Befriending** — post-battle recruit logic, conditions
+32. **City-Building** — File City expansion tied to recruits, service unlocks (shop/clinic/farm/gym)
+33. **Shop UI** — buy/sell against inventory and Bits
+34. **Main Story Quests + Side Quests (content pass)**
 
-### Debug / Developer Tools
-- Debug console
-- Cheat menu (spawn, evolve, teleport, fast-forward time)
-- Stat inspector overlay
-- Save state viewer
+### Phase 6 — Presentation & Persistence
+
+Goal: scripted moments, permanence, polish.
+
+35. **Cutscene System** — timeline-style authoring, skippable, triggered cutscenes
+36. **Save / Load System** — multi-slot, autosave, full serialization of all the above, versioning
+37. **Main Menu & Save Slot UI** — new game, continue, load, options
+38. **Settings Menu** — audio mix, controls rebind, graphics, text speed, subtitles
+39. **Full Audio Pass** — zone music, battle music, SFX coverage, crossfades
+40. **Debug / Cheat Menu (full)** — spawn, evolve, teleport, fast-forward time, save inspector
+
+---
+
+## Systems Reference
+
+Full list grouped by domain — same systems as above, for quick scanning.
+
+### Digimon & Progression
+- Digimon data & instances
+- Stats & hidden stats
+- Life stages & lifespan
+- Evolution & devolution
+- Digitama inheritance
+
+### Gameplay Loops
+- Care (feed/sleep/bathroom/praise/scold)
+- Training
+- Battle + techniques + status effects
+- Recruitment / befriending
+- Quests
+- City-building
+
+### World
+- Player movement & camera
+- Partner follow
+- Zones & transitions
+- Overworld encounters
+- Time / day-night
+
+### Characters
+- NPCs
+- Enemy AI (overworld + battle)
+- Partner AI
+
+### Narrative
+- Dialogue system
+- Cutscenes
+
+### Meta / Framework
+- Input
+- UI & menus (HUD, status, inventory, quest log, battle, shop, save/load, settings)
+- Audio
+- Save/load
+- Settings & config
+- Debug tools
 
 ## Content Data (placeholder-backed)
 
