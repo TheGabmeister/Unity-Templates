@@ -133,8 +133,9 @@ A runnable Unity project where you can press Play, see a debug console and an FP
 - `ZoneCatalog` — ScriptableObject holding all `ZoneDefinition` assets
 
 **Core** (`DigimonWorld.Core`):
-- `Bootstrapper` — MonoBehaviour in `Bootstrap.unity`, registers services and loads first zone
+- `Bootstrapper` — MonoBehaviour in `Bootstrap.unity`, registers services and loads first zone. **Script Execution Order: -1000** so its `Awake` runs before any other `Awake`, making `Game.I.<Service>` safe to call from `Awake` everywhere else.
 - `ServiceLocator` — static registry: `Register<T>`, `Get<T>`
+- `EditorBootstrapLoader` — static class with `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]`; if the `Bootstrap` scene isn't loaded, additively loads it before any other scene's `Awake` runs. Lets you press Play from any zone scene during iteration.
 
 ## Project Layout
 
@@ -165,6 +166,8 @@ Assets/
 - A lightweight service locator on the `Bootstrap` scene
 - Registered services: `IInputService`, `IAudioService`, `IUIService`, `ISceneService`, `IDebugService`
 - No dependency injection framework — keep it simple
+- `Bootstrapper` runs at **Script Execution Order -1000** so it registers services before any other `Awake` — consumers can safely use `Game.I.<Service>` from `Awake`
+- `EditorBootstrapLoader` auto-loads the `Bootstrap` scene if you press Play from a zone scene, so single-scene iteration works without manually opening Bootstrap first
 
 ## Out of Scope for Phase 0
 
@@ -183,3 +186,5 @@ Assets/
 - [ ] `Pause` pushes/pops `PauseScreen` with fade
 - [ ] Debug hotkey plays SFX and music through the mixer
 - [ ] Input events fire from both keyboard and gamepad
+- [ ] Pressing Play from `Zone_TestRoom` (Bootstrap not open) still works — `EditorBootstrapLoader` loads Bootstrap first
+- [ ] `Bootstrapper` has Script Execution Order -1000
