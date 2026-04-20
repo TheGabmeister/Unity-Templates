@@ -12,84 +12,85 @@ A gameplay-focused recreation of Digimon World 1 in Unity. Not a pixel-perfect r
 
 ## Implementation Order
 
-Ordered so each phase builds on the previous one. Anything later that needs an earlier system can assume it's already there.
+Each system enters the plan at the phase where gameplay first actually needs it — not upfront. If infrastructure isn't required until Phase 3, it lands in Phase 3. KISS/YAGNI: build what this phase needs, refactor when a second use case shows up.
 
 ---
 
 ### Phase 0 — Foundation
 
-Project plumbing. Nothing gameplay-facing yet, but everything else depends on it.
+The bare minimum plumbing to let Phase 1 start. Nothing else — every other "foundation" system (audio, UI framework, debug console, scene loader) waits until the phase that first needs it.
 
-1. **Input System** — keyboard, mouse, gamepad; action maps; rebinding hook
-2. **Audio System (bare)** — mixer buses (Master/Music/SFX/UI), one-shot helper, music player stub
-3. **UI Framework** — canvas setup, screen manager, transitions, base screen class
-4. **Debug Tools (bare)** — in-game console, toggleable overlay, FPS counter
-5. **Scene / Zone Loader** — async load/unload, loading screen, scene references
+1. **Bootstrap + Service Locator** — `Bootstrapper` instantiates a persistent `Systems` prefab with `DontDestroyOnLoad`; `ServiceLocator` lets other systems find services without hardcoded refs. Runs before any scene `Awake` (Script Execution Order −1000) plus an `EditorBootstrapLoader` so Play-from-any-scene works.
+2. **Input System** — keyboard, mouse, gamepad; action maps (`Gameplay`, `UI`); core actions (`Move`, `Look`, `Interact`, `Pause`); `IInputService`. Needed immediately by Phase 1's player movement. Rebind UI deferred to Phase 6.
 
 ### Phase 1 — The Player in a World
 
 Goal: walk a capsule around a test zone with a camera.
 
-6. **Player Movement** — third-person controller, walk/run, gravity, ground check
-7. **Camera** — follow camera, look control, collision avoidance
-8. **World & Map (one test zone)** — a single zone with walkable terrain and colliders
-9. **Zone Transitions** — trigger volumes swap zones via the scene loader
-10. **Interaction System** — raycast prompts, `IInteractable` interface, UI prompt
+3. **Player Movement** — third-person controller, walk/run, gravity, ground check.
+4. **Camera** — follow camera, look control, collision avoidance.
+5. **World & Map (one test zone)** — a single zone with walkable terrain and colliders.
+6. **Scene / Zone Loader** — async load/unload, scene references, progress hook. Introduced here because zone transitions need it. No loading screen yet (the UI framework doesn't exist — either hold the black frame or fade via a bare full-screen quad).
+7. **Zone Transitions** — trigger volumes swap zones via the scene loader.
+8. **Interaction System** — raycast prompts, `IInteractable` interface, world-space label for the prompt. No UI framework required for a single floating "Press E" label.
 
 ### Phase 2 — Companions, Conversations, Clocks
 
-Goal: partner follows you; NPCs talk; the world has time.
+Goal: partner follows you; NPCs talk; the world has time; the first real screens exist.
 
-11. **Partner Digimon Follow** — AI-controlled companion, pathfinding/follow, idle behaviors
-12. **Dialogue System** — speaker data, branching trees, choice UI, conditional lines
-13. **NPC Entities** — dialogue-ready NPCs with patrol/idle behavior
-14. **Time System** — in-game clock, day/night cycle, time-gated hooks
-15. **HUD** — partner status bar, clock, zone name, currency readout
+9. **UI Framework** — `ScreenManager` stack (`Push`/`Pop`/`Replace`), `BaseScreen`, fullscreen fader, pause screen. Introduced here because dialogue, HUD, and pause all need consistent screens. The Phase 1 zone loader gets a proper `LoadingScreen` now that one can exist.
+10. **Partner Digimon Follow** — AI-controlled companion, pathfinding/follow, idle behaviours.
+11. **Dialogue System** — speaker data, branching trees, choice UI, conditional lines.
+12. **NPC Entities** — dialogue-ready NPCs with patrol/idle behaviour.
+13. **Time System** — in-game clock, day/night cycle, time-gated hooks.
+14. **HUD** — partner status bar, clock, zone name, currency readout.
 
 ### Phase 3 — Digimon as Data
 
 Goal: the partner is a real Digimon with stats, needs, and care.
 
-16. **Digimon Data Model** — species, stages, families, types, elements (ScriptableObjects)
-17. **Digimon Instance** — runtime stats, age, hidden stats (hunger, weight, tiredness, discipline, happiness, care mistakes)
-18. **Care System** — feeding, sleeping, bathroom, praise/scold, training stubs
-19. **Item & Inventory System** — item catalog, stackable inventory, use-on-partner, Bits currency
-20. **Status / Digimon Info UI** — stat screen, inventory screen
-21. **Training Facilities** — mini-game stubs that feed stats, tiredness/happiness gating
+15. **Debug Tools** — toggleable overlay, FPS counter, in-game console, command registry, starter commands (`help`, `clear`, `time.scale`, `scene.load`, plus care/stat set-commands). Introduced here because stats, hidden stats, and care timing are tedious to test by hand — this is the first phase where a console pays for itself. Compile-guarded out of release builds.
+16. **Digimon Data Model** — species, stages, families, types, elements (ScriptableObjects).
+17. **Digimon Instance** — runtime stats, age, hidden stats (hunger, weight, tiredness, discipline, happiness, care mistakes).
+18. **Care System** — feeding, sleeping, bathroom, praise/scold, training stubs.
+19. **Item & Inventory System** — item catalog, stackable inventory, use-on-partner, Bits currency.
+20. **Status / Digimon Info UI** — stat screen, inventory screen.
+21. **Training Facilities** — mini-game stubs that feed stats, tiredness/happiness gating.
 
 ### Phase 4 — Combat
 
 Goal: fight wild Digimon, win, lose, flee.
 
-22. **Techniques / Moves Data** — move list, MP cost, element, power
-23. **Battle System Core** — encounter start, turn/command flow, damage calc, type/element advantage
-24. **Enemy AI (Battle)** — move selection, targeting, retreat thresholds
-25. **Status Effects** — poison, paralysis, sleep, confusion, etc.
-26. **Battle UI** — HP/MP, commands, tech list, log
-27. **Brains-Driven Control** — obedience scaling with Brains/Discipline
-28. **Overworld Encounters** — patrol/chase/flee enemies, encounter trigger
+22. **Audio System (bare)** — `AudioMixer` with `Master`/`Music`/`SFX`/`UI` buses, `IAudioService` with `PlaySFX`/`PlayMusic`/`StopMusic`/`SetBusVolume`, SFX one-shot pool, simple music player. Introduced here because battle hits, technique cues, and status changes are the first place silence genuinely hurts. If an earlier phase ends up needing a single SFX, pull this item forward — don't add ad-hoc `AudioSource.Play` calls.
+23. **Techniques / Moves Data** — move list, MP cost, element, power.
+24. **Battle System Core** — encounter start, turn/command flow, damage calc, type/element advantage.
+25. **Enemy AI (Battle)** — move selection, targeting, retreat thresholds.
+26. **Status Effects** — poison, paralysis, sleep, confusion, etc.
+27. **Battle UI** — HP/MP, commands, tech list, log.
+28. **Brains-Driven Control** — obedience scaling with Brains/Discipline.
+29. **Overworld Encounters** — patrol/chase/flee enemies, encounter trigger.
 
 ### Phase 5 — Progression & Story
 
 Goal: evolution, quests, recruitment, city growth.
 
-29. **Evolution System** — requirements, transition event, devolution, Digitama inheritance
-30. **Quest System** — states, objectives, rewards, quest log UI
-31. **Recruitment / Befriending** — post-battle recruit logic, conditions
-32. **City-Building** — File City expansion tied to recruits, service unlocks (shop/clinic/farm/gym)
-33. **Shop UI** — buy/sell against inventory and Bits
-34. **Main Story Quests + Side Quests (content pass)**
+30. **Evolution System** — requirements, transition event, devolution, Digitama inheritance.
+31. **Quest System** — states, objectives, rewards, quest log UI.
+32. **Recruitment / Befriending** — post-battle recruit logic, conditions.
+33. **City-Building** — File City expansion tied to recruits, service unlocks (shop/clinic/farm/gym).
+34. **Shop UI** — buy/sell against inventory and Bits.
+35. **Main Story Quests + Side Quests (content pass).**
 
 ### Phase 6 — Presentation & Persistence
 
 Goal: scripted moments, permanence, polish.
 
-35. **Cutscene System** — timeline-style authoring, skippable, triggered cutscenes
-36. **Save / Load System** — multi-slot, autosave, full serialization of all the above, versioning
-37. **Main Menu & Save Slot UI** — new game, continue, load, options
-38. **Settings Menu** — audio mix, controls rebind, graphics, text speed, subtitles
-39. **Full Audio Pass** — zone music, battle music, SFX coverage, crossfades
-40. **Debug / Cheat Menu (full)** — spawn, evolve, teleport, fast-forward time, save inspector
+36. **Cutscene System** — timeline-style authoring, skippable, triggered cutscenes.
+37. **Save / Load System** — multi-slot, autosave, full serialization of all the above, versioning.
+38. **Main Menu & Save Slot UI** — new game, continue, load, options.
+39. **Settings Menu** — audio mix, controls rebind, graphics, text speed, subtitles.
+40. **Full Audio Pass** — zone music selection, battle music, SFX coverage, crossfades.
+41. **Debug / Cheat Menu (full)** — spawn, evolve, teleport, fast-forward time, save inspector.
 
 ---
 

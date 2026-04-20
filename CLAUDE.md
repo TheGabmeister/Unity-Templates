@@ -62,7 +62,7 @@ The 2D template does not yet have a `Resources/Systems.prefab`; add one if you b
 If asked to work on the Digimon World 1 recreation:
 
 - Check `DigimonWorld1.md` for the phase and scope.
-- Check `SPEC_PHASE_00.md` for naming conventions, service locator pattern, and the list of Phase 0 systems (Input, Audio, UI, Debug, Scene/Zone Loader) plus the `Bootstrapper` / `EditorBootstrapLoader` / `ServiceLocator` core scripts.
+- Check `SPEC_PHASE_00.md` for naming conventions, service locator pattern, and the list of Phase 0 systems (Bootstrap + Service Locator, Input) plus the `Bootstrapper` / `EditorBootstrapLoader` / `ServiceLocator` core scripts. Other infrastructure (Audio, UI framework, Debug tools, Scene/Zone loader) is intentionally deferred to the phase that first needs it — see the Implementation Order in `DigimonWorld1.md`.
 - Namespace: `DigimonWorld.<Subsystem>`. Services implement `I<Name>Service`. Scene files for zones use the `Zone_` prefix.
 - Services are accessed via service locator; `Bootstrapper` runs at Script Execution Order -1000 so `Game.I.<Service>` is safe from `Awake`.
 - The Digimon World 1 implementation targets the 3D template (needs AI Navigation).
