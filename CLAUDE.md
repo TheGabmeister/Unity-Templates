@@ -74,6 +74,14 @@ If asked to work on the Digimon World 1 recreation:
 - `.gitattributes` sets `* text=auto` for LF normalisation. Unity meta files are tracked — don't delete them.
 - `ignore.conf` inside each template mirrors the standard Unity gitignore; actual `.gitignore` is at the repo root level if present (not currently).
 
+## Coding principles
+
+- **KISS** — simplest thing that works. No clever patterns where a plain `if` does the job. If a class is under 50 lines and clear, don't split it.
+- **YAGNI** — don't build for hypothetical needs. No interfaces with one implementation, no config knobs with one value, no abstraction layers "for later." Write what this phase needs; refactor when a second use case actually shows up.
+- **DRY** — remove real duplication, not shape-similar code. Three copies of the same logic → extract. Two functions that happen to both take a `Vector3` → leave alone. Wrong abstraction costs more than repetition.
+
+When in doubt, lean KISS over DRY. A bit of repetition is cheaper to read and change than the wrong shared helper.
+
 ## Things not in the repo (yet)
 
 - No CI / GitHub Actions.
