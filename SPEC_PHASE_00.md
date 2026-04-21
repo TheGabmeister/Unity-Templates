@@ -1,141 +1,68 @@
 # SPEC — Phase 0: Foundation
 
-High-level spec for the five plumbing systems that everything else depends on. No gameplay features — this is the scaffolding.
+High-level spec for the bare minimum plumbing needed before Phase 1 can start. No gameplay, no systems that a later phase doesn't yet require.
 
 ## Goal
 
-A runnable Unity project where you can press Play, see a debug console and an FPS overlay, hear a test SFX and music track through a mixer, load a blank "test zone" scene asynchronously with a loading screen, and swap between UI screens — all driven by the new Input System.
+A runnable Unity project where pressing Play loads a bootstrap scene, registers an input service, and lands in a blank test scene — with `Game.I.<Service>` safe to call from any `Awake`. Nothing else.
 
 ## What's in Phase 0
 
-1. Input System
-2. Audio System (bare)
-3. UI Framework
-4. Debug Tools (bare)
-5. Scene / Zone Loader
+1. Bootstrap + Service Locator
+2. Input System
+
+That's it. Audio, UI framework, debug console, and scene loader are deferred to the phase that first needs them (see `DigimonWorld1.md` — Implementation Order).
 
 ## Naming Conventions
 
-- **Namespace:** `DigimonWorld.<Subsystem>` (e.g. `DigimonWorld.Audio`)
-- **Interfaces:** `IPascalCase` (`IAudioService`)
-- **Services:** `PascalCaseService` — the MonoBehaviour implementation of an interface (`AudioService`)
-- **MonoBehaviours:** `PascalCase` describing the object (`DebugOverlay`, `MusicPlayer`)
-- **ScriptableObjects:** `PascalCaseDefinition` or `PascalCaseData` (`ZoneDefinition`)
-- **Enums:** `PascalCase` singular (`AudioBus`, `ScreenId`)
+- **Namespace:** `DigimonWorld.<Subsystem>` (e.g. `DigimonWorld.Input`)
+- **Interfaces:** `IPascalCase` (`IInputService`)
+- **Services:** `PascalCaseService` — the MonoBehaviour implementation of an interface (`InputService`)
+- **MonoBehaviours:** `PascalCase` describing the object
+- **ScriptableObjects:** `PascalCaseDefinition` or `PascalCaseData`
+- **Enums:** `PascalCase` singular (`InputActionMap`)
 - **Scenes:** `PascalCase.unity`; zone scenes prefixed with `Zone_` (`Zone_TestRoom.unity`)
-- **Asset files:** match the class name (`InputActions.inputactions`, `MainMixer.mixer`)
+- **Asset files:** match the class name (`InputActions.inputactions`)
 - **Folders:** `PascalCase`
 - **Private fields:** `_camelCase`; serialized fields `[SerializeField] private ...`
 
-## 1. Input System
+## 1. Bootstrap + Service Locator
+
+**Purpose:** Give every other system a single, predictable place to live and a simple way to find each other. No DI framework — keep it flat.
+
+- A persistent `Bootstrap` scene holds a single `Bootstrapper` MonoBehaviour
+- `Bootstrapper` has **Script Execution Order −1000** so its `Awake` runs before any other `Awake`, making `Game.I.<Service>` safe to call from `Awake` everywhere else
+- `ServiceLocator` is a static registry: `Register<T>`, `Get<T>`. That's the whole API.
+- `EditorBootstrapLoader` is a static class with `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]`; if `Bootstrap` isn't already loaded, it additively loads it before any other scene's `Awake`. Lets you press Play from any zone scene during iteration.
+- `Game.I` is a short-hand accessor (`public static class Game { public static ServiceLocator I => ...; }`) so call sites read `Game.I.Input.Move` rather than `ServiceLocator.Get<IInputService>().Move`.
+
+**Done when:** Pressing Play from any scene lands in that scene with `Bootstrap` additively loaded and at least one service registered and reachable via `Game.I`.
+
+**Scripts** (`DigimonWorld.Core`):
+- `Bootstrapper` — registers services and loads the first zone via whatever loader exists (Phase 0: none; Phase 1+ uses the scene loader)
+- `ServiceLocator` — static `Register<T>` / `Get<T>`
+- `Game` — `Game.I` accessor
+- `EditorBootstrapLoader` — `[RuntimeInitializeOnLoadMethod]` that auto-loads Bootstrap
+
+## 2. Input System
 
 **Purpose:** One place that owns "what the player pressed". Everything else listens.
 
 - Unity's new Input System package
-- Action maps: `Gameplay`, `UI`, `Debug`
-- Core actions stubbed now: `Move`, `Look`, `Interact`, `Pause`, `ToggleDebug`
+- Action maps: `Gameplay`, `UI` (add `Debug` in Phase 3 when the debug system lands)
+- Core actions stubbed now: `Move`, `Look`, `Interact`, `Pause`
 - Device support: keyboard + mouse, gamepad
-- Rebinding is a hook only — no UI yet
+- Rebinding UI deferred to Phase 6 — expose a hook only
 - Exposed as a single service so other systems don't touch the raw API
 
-**Done when:** A test script logs action events for all core actions on both keyboard and gamepad.
+**Done when:** A test script logs action events for all core actions on both keyboard and gamepad, via `Game.I.Input`.
 
 **Scripts** (`DigimonWorld.Input`):
 - `IInputService` — interface
-- `InputService` — MonoBehaviour, wraps generated actions, exposed via service locator
+- `InputService` — MonoBehaviour, wraps generated actions, registered with the service locator
 - `InputActions.inputactions` — generated C# class `InputActions`
-- `InputActionMap` — enum: `Gameplay`, `UI`, `Debug`
-- `InputTestLogger` — debug-only MonoBehaviour that logs action events
-
-## 2. Audio System (bare)
-
-**Purpose:** Play sounds and music without anyone hardcoding `AudioSource.Play`.
-
-- One `AudioMixer` asset with buses: `Master`, `Music`, `SFX`, `UI`
-- `AudioService` with `PlaySFX(clip)`, `PlayMusic(clip)`, `StopMusic()`, `SetBusVolume(bus, 0–1)`
-- Simple one-shot pool for SFX
-- Music player supports crossfade (stub — hard cut is fine for Phase 0 if crossfade slips)
-- No zone-based music yet (that's Phase 6's full pass)
-
-**Done when:** A debug hotkey plays a test SFX and starts a test music track on the correct buses.
-
-**Scripts** (`DigimonWorld.Audio`):
-- `IAudioService` — interface
-- `AudioService` — MonoBehaviour, owns the mixer and sub-players
-- `SfxPool` — one-shot AudioSource pool
-- `MusicPlayer` — handles current/next track + crossfade
-- `AudioBus` — enum: `Master`, `Music`, `Sfx`, `Ui`
-- `AudioClipReference` — serializable struct pairing clip + bus (optional, for SO authoring)
-- `MainMixer.mixer` — the `AudioMixer` asset
-
-## 3. UI Framework
-
-**Purpose:** A consistent way to show/hide screens without piles of `SetActive` calls.
-
-- Root `Canvas` + `EventSystem` in a persistent bootstrap scene
-- `ScreenManager` with a stack: `Push`, `Pop`, `Replace`
-- `BaseScreen` class with `OnShow`, `OnHide`, `OnBack`
-- Input routing: `UI` action map enabled while any screen is up
-- Placeholder screens: `LoadingScreen`, `PauseScreen` (empty except a title)
-- Simple fade in/out transition
-
-**Done when:** Pressing `Pause` pushes `PauseScreen`, pressing it again pops it, and fades work.
-
-**Scripts** (`DigimonWorld.UI`):
-- `IUIService` — interface
-- `UIService` — MonoBehaviour, owns the screen stack and fader
-- `BaseScreen` — abstract MonoBehaviour with `OnShow` / `OnHide` / `OnBack`
-- `LoadingScreen` — `BaseScreen` subclass, shows progress bar
-- `PauseScreen` — `BaseScreen` subclass, placeholder
-- `ScreenFader` — fullscreen fade in/out
-- `ScreenId` — enum of known screens
-
-## 4. Debug Tools (bare)
-
-**Purpose:** See what's happening at runtime without attaching a debugger.
-
-- Toggleable overlay (`ToggleDebug` action)
-- FPS counter + frame time
-- In-game console: log capture, filter by level, command registry
-- A few starter commands: `help`, `clear`, `time.scale <x>`, `scene.load <name>`
-- Not shipped in release builds (compile guard)
-
-**Done when:** Toggling the overlay shows FPS and the console; `help` lists registered commands.
-
-**Scripts** (`DigimonWorld.Debug`):
-- `IDebugService` — interface
-- `DebugService` — MonoBehaviour, routes toggle input and owns overlay
-- `DebugOverlay` — root overlay canvas controller
-- `FpsCounter` — FPS + frame time readout
-- `DebugConsole` — log capture, input field, command dispatch
-- `IDebugCommand` — interface: `Name`, `Description`, `Execute(args)`
-- `HelpCommand`, `ClearCommand`, `TimeScaleCommand`, `SceneLoadCommand` — starter commands
-- `DebugCommandRegistry` — discovers and registers `IDebugCommand` implementations
-
-## 5. Scene / Zone Loader
-
-**Purpose:** Move between scenes without frame hitches or missing references.
-
-- `SceneService` with `LoadZoneAsync(zoneId)` and `UnloadZoneAsync(zoneId)`
-- Zones defined as `ZoneDefinition` ScriptableObjects (id, scene reference, display name)
-- Additive loading: a persistent `Bootstrap` scene always stays loaded (holds services + UI root)
-- `LoadingScreen` shown during transitions, driven by the UI Framework
-- Progress reporting (0–1) to the loading screen
-- One test zone: `Zone_TestRoom` — empty, just a ground plane and a light
-
-**Done when:** A debug command `scene.load Zone_TestRoom` unloads the current zone, shows the loading screen, loads the new zone additively, and hides the loading screen.
-
-**Scripts** (`DigimonWorld.Scenes`):
-- `ISceneService` — interface
-- `SceneService` — MonoBehaviour, async load/unload, progress reporting
-- `ZoneDefinition` — ScriptableObject: id, scene reference, display name
-- `ZoneId` — enum of known zones (`TestRoom`, ...)
-- `ZoneCatalog` — ScriptableObject holding all `ZoneDefinition` assets
-
-**Core** (`DigimonWorld.Core`):
-- `Bootstrapper` — MonoBehaviour in `Bootstrap.unity`, registers services and loads first zone. **Script Execution Order: -1000** so its `Awake` runs before any other `Awake`, making `Game.I.<Service>` safe to call from `Awake` everywhere else.
-- `ServiceLocator` — static registry: `Register<T>`, `Get<T>`
-- `EditorBootstrapLoader` — static class with `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]`; if the `Bootstrap` scene isn't loaded, additively loads it before any other scene's `Awake` runs. Lets you press Play from any zone scene during iteration.
+- `InputActionMap` — enum: `Gameplay`, `UI`
+- `InputTestLogger` — debug-only MonoBehaviour that logs action events (can be deleted once Phase 1 player movement exists)
 
 ## Project Layout
 
@@ -149,42 +76,35 @@ Assets/
     Scripts/
       Core/               # Service locator / bootstrapper
       Input/
-      Audio/
-      UI/
-        Framework/
-        Screens/
-      Debug/
-      Scenes/
     Settings/
       Input/              # InputActions asset
-      Audio/              # AudioMixer asset
-      Zones/              # ZoneDefinition assets
 ```
+
+Folders for `Audio/`, `UI/`, `Debug/`, and `Scenes/` (the loader) get added in the phases that introduce those systems. Don't pre-create empty folders.
 
 ## Service Access
 
-- A lightweight service locator on the `Bootstrap` scene
-- Registered services: `IInputService`, `IAudioService`, `IUIService`, `ISceneService`, `IDebugService`
-- No dependency injection framework — keep it simple
-- `Bootstrapper` runs at **Script Execution Order -1000** so it registers services before any other `Awake` — consumers can safely use `Game.I.<Service>` from `Awake`
-- `EditorBootstrapLoader` auto-loads the `Bootstrap` scene if you press Play from a zone scene, so single-scene iteration works without manually opening Bootstrap first
+- Registered services: `IInputService` (plus whatever later phases add)
+- No dependency injection framework
+- `Bootstrapper` runs at **Script Execution Order −1000** so it registers services before any other `Awake` — consumers can safely use `Game.I.<Service>` from `Awake`
+- `EditorBootstrapLoader` auto-loads the `Bootstrap` scene if you press Play from a zone scene
 
 ## Out of Scope for Phase 0
 
-- Settings menu (Phase 6)
-- Save/load (Phase 6)
-- Rebind UI (Phase 6)
-- Zone music selection (Phase 6)
+Everything else. Specifically:
+
+- Audio (Phase 4 — when combat SFX make silence hurt)
+- UI framework, screen manager, pause screen, loading screen (Phase 2 — when dialogue + HUD arrive)
+- Debug tools, in-game console, FPS overlay (Phase 3 — when care/stats need force-setting)
+- Scene / Zone Loader (Phase 1 — when zone transitions need it)
+- Settings menu, save/load, rebind UI (Phase 6)
 - Any gameplay: no player, no camera, no partner, no Digimon
 
 ## Acceptance Checklist
 
-- [ ] Project opens, `Bootstrap` scene is set as the first scene
-- [ ] Pressing Play lands in `Zone_TestRoom` via the scene loader
-- [ ] `ToggleDebug` shows FPS + console
-- [ ] `help` lists commands; `scene.load Zone_TestRoom` works
-- [ ] `Pause` pushes/pops `PauseScreen` with fade
-- [ ] Debug hotkey plays SFX and music through the mixer
-- [ ] Input events fire from both keyboard and gamepad
+- [ ] Project opens, `Bootstrap` scene is set as the first scene in Build Settings
+- [ ] `Bootstrapper` has Script Execution Order −1000
+- [ ] Pressing Play from `Bootstrap` registers `IInputService` and stays in a blank test scene
 - [ ] Pressing Play from `Zone_TestRoom` (Bootstrap not open) still works — `EditorBootstrapLoader` loads Bootstrap first
-- [ ] `Bootstrapper` has Script Execution Order -1000
+- [ ] `Game.I.Input` is non-null from any MonoBehaviour's `Awake`
+- [ ] Input events fire from both keyboard and gamepad for all core actions
