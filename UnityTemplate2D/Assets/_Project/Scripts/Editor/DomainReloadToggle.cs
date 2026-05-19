@@ -49,6 +49,7 @@ static class DomainReloadToggle
             style = { alignSelf = Align.Center }
         };
         ApplyToggleStyle(toggle, toggle.value);
+        
         toggle.RegisterValueChangedCallback(evt =>
         {
             EditorSettings.enterPlayModeOptionsEnabled = true;
