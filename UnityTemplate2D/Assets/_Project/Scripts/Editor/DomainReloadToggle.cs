@@ -61,13 +61,12 @@ static class DomainReloadToggle
         ApplyToggleStyle(toggle, toggle.value);
         toggle.RegisterValueChangedCallback(evt =>
         {
+            EditorSettings.enterPlayModeOptionsEnabled = true;
             if (evt.newValue)
-                EditorSettings.enterPlayModeOptionsEnabled = false;
+                EditorSettings.enterPlayModeOptions &= ~EnterPlayModeOptions.DisableDomainReload;
             else
-            {
-                EditorSettings.enterPlayModeOptionsEnabled = true;
-                EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
-            }
+                EditorSettings.enterPlayModeOptions |= EnterPlayModeOptions.DisableDomainReload;
+
             toggle.text = evt.newValue ? "DR: On" : "DR: Off";
             ApplyToggleStyle(toggle, evt.newValue);
         });
