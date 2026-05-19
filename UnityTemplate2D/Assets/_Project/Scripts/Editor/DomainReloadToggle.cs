@@ -4,6 +4,24 @@ using UnityEngine;
 using UnityEditor.UIElements;
 using UnityEngine.UIElements;
 
+/*
+Adds a "DR: On/Off" toggle to the main toolbar next to the Play button.
+Controls whether entering Play Mode reloads the domain (slow, full reset)
+or only reloads the scene (fast iteration, but static state persists).
+
+Why reflection instead of MainToolbarElementAttribute?
+Unity 6.3 has an official MainToolbarElement API, but elements registered
+through it are hidden by default and require the user to right-click the
+toolbar to enable them. This approach injects directly into the toolbar's
+VisualElement tree so the toggle is always visible without manual setup.
+
+Why delayCall?
+The toolbar UI doesn't exist yet when InitializeOnLoad runs. delayCall
+fires once after the current frame, re-queuing itself if the toolbar
+still isn't ready. Unlike EditorApplication.update, it doesn't poll
+every frame — each call is single-fire.
+*/
+
 [InitializeOnLoad]
 static class DomainReloadToggle
 {
@@ -11,26 +29,20 @@ static class DomainReloadToggle
 
     static DomainReloadToggle()
     {
-        EditorApplication.update += TryAttach;
+        EditorApplication.delayCall += TryAttach;
     }
 
     static void TryAttach()
     {
         var toolbar = FindToolbar();
-        if (toolbar == null) return;
+        if (toolbar == null) { EditorApplication.delayCall += TryAttach; return; }
 
         var root = toolbar.rootVisualElement;
-        if (root == null) return;
-        if (root.Q(k_ToggleName) != null)
-        {
-            EditorApplication.update -= TryAttach;
-            return;
-        }
+        if (root == null) { EditorApplication.delayCall += TryAttach; return; }
+        if (root.Q(k_ToggleName) != null) return;
 
         var playMode = root.Q("PlayMode");
-        if (playMode == null) return;
-
-        EditorApplication.update -= TryAttach;
+        if (playMode == null) { EditorApplication.delayCall += TryAttach; return; }
 
         var toggle = new ToolbarToggle
         {
@@ -58,6 +70,8 @@ static class DomainReloadToggle
         parent.Insert(parent.IndexOf(playMode) + 1, toggle);
     }
 
+    // MainToolbarWindow is internal, so we find it by name via reflection.
+    // Falls back to "Toolbar" for pre-6.3 Unity versions.
     static EditorWindow FindToolbar()
     {
         var assembly = typeof(Editor).Assembly;
