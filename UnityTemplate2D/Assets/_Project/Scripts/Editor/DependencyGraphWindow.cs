@@ -118,6 +118,12 @@ public class DependencyGraphWindow : EditorWindow
 
         GUILayout.FlexibleSpace();
 
+        if (GUILayout.Button("Center", EditorStyles.toolbarButton, GUILayout.Width(50)))
+        {
+            CenterGraph();
+            Repaint();
+        }
+
         if (GUILayout.Button($"{Mathf.RoundToInt(_zoom * 100)}%", EditorStyles.toolbarButton, GUILayout.Width(45)))
         {
             _zoom = 1f;
