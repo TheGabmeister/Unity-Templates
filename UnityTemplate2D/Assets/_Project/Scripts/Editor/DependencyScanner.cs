@@ -31,6 +31,10 @@ public static class DependencyScanner
         @"(?:public|private|protected|internal|static|readonly|const|volatile|new)\s+(\w+)(?:<[\w\s,<>]+>)?\s+\w+\s*[;=,)]",
         RegexOptions.Compiled);
 
+    static readonly Regex SimpleFieldRegex = new(
+        @"^\s+(\w+)\s+\w+\s*[;=]",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
     static readonly Regex GenericArgRegex = new(
         @"<\s*(\w+)(?:\s*,\s*(\w+))?(?:\s*,\s*(\w+))?\s*>",
         RegexOptions.Compiled);
@@ -38,6 +42,10 @@ public static class DependencyScanner
     static readonly Regex MethodReturnRegex = new(
         @"(?:public|private|protected|internal|static|virtual|override|abstract|async|new)\s+(?:(?:public|private|protected|internal|static|virtual|override|abstract|async|new)\s+)*(\w+)(?:<[^>]+>)?\s+\w+\s*\(",
         RegexOptions.Compiled);
+
+    static readonly Regex SimpleMethodRegex = new(
+        @"^\s+(\w+)\s+\w+\s*\(",
+        RegexOptions.Compiled | RegexOptions.Multiline);
 
     static readonly Regex ParameterRegex = new(
         @"(?:[\(,])\s*(?:(?:ref|out|in|params|this)\s+)?(\w+)(?:<[^>]+>)?\s+\w+",
@@ -166,6 +174,9 @@ public static class DependencyScanner
         foreach (Match m in FieldRegex.Matches(content))
             TryAdd(m.Groups[1].Value);
 
+        foreach (Match m in SimpleFieldRegex.Matches(content))
+            TryAdd(m.Groups[1].Value);
+
         foreach (Match m in GenericArgRegex.Matches(content))
         {
             TryAdd(m.Groups[1].Value);
@@ -174,6 +185,9 @@ public static class DependencyScanner
         }
 
         foreach (Match m in MethodReturnRegex.Matches(content))
+            TryAdd(m.Groups[1].Value);
+
+        foreach (Match m in SimpleMethodRegex.Matches(content))
             TryAdd(m.Groups[1].Value);
 
         foreach (Match m in ParameterRegex.Matches(content))
