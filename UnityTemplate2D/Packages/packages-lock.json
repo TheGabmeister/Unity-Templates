@@ -17,15 +17,6 @@
       "dependencies": {},
       "url": "https://registry.npmjs.org"
     },
-    "com.ucp.bridge": {
-      "version": "https://github.com/mflRevan/unity-control-protocol.git?path=unity-package/com.ucp.bridge#v0.5.2",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {
-        "com.unity.test-framework": "1.1.31"
-      },
-      "hash": "7e92b2d4dfdd0cd90ab31e973f75413dfc196e5c"
-    },
     "com.unity.2d.animation": {
       "version": "13.0.4",
       "depth": 1,
@@ -313,6 +304,15 @@
         "com.unity.modules.ui": "1.0.0",
         "com.unity.modules.imgui": "1.0.0"
       }
+    },
+    "com.youngwoocho02.unity-cli-connector": {
+      "version": "https://github.com/youngwoocho02/unity-cli.git?path=unity-connector",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.nuget.newtonsoft-json": "3.2.1"
+      },
+      "hash": "886058c1bd3fd5f005cf31155fef6726260ce63c"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
