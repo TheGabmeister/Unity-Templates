@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__blender__get_scene_info",
+      "mcp__blender__execute_python",
+      "WebSearch",
+      "WebFetch",
+      "Bash(curl -s *)",
+      "Bash(curl -sL *)",
+      "Bash(python generate_sprites.py)",
+      "Bash(inkscape *)",
+      "Bash(ffmpeg *)",
+      "Bash(fluidsynth *)",
+      "Bash(blender *)",
+      "Bash(dir *)",
+      "Bash(mkdir *)",
+      "Bash(ls *)",
+      "Bash(Godot_v4.6.2-stable_win64.exe *)",
+      "Bash(kill *)",
+      "Bash(wait)",
+      "Bash(where *)",
+      "Bash(taskkill *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Admin\\.claude"
+    ]
+  }
+}
