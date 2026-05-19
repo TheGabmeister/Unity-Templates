@@ -69,12 +69,7 @@ static class DomainReloadToggle
 
     static void ApplyToggleStyle(VisualElement element, bool enabled)
     {
-        element.style.backgroundColor = enabled
-            ? new Color(0.3f, 0.8f, 0.3f, 0.7f)
-            : StyleKeyword.Null;
-        element.style.color = enabled
-            ? Color.white
-            : StyleKeyword.Null;
+        element.style.opacity = enabled ? 1f : 0.6f;
     }
 
     static bool IsDomainReloadEnabled()
