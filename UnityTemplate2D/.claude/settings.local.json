@@ -21,7 +21,7 @@
       "Bash(taskkill *)",
       "Bash(find *)",
       "Read(//c/Program Files/Unity/**)",
-      "Bash(xargs *)",
+      "Bash(xargs *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Admin\\.claude"
