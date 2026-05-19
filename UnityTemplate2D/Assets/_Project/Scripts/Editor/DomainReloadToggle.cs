@@ -15,11 +15,10 @@ through it are hidden by default and require the user to right-click the
 toolbar to enable them. This approach injects directly into the toolbar's
 VisualElement tree so the toggle is always visible without manual setup.
 
-Why delayCall?
-The toolbar UI doesn't exist yet when InitializeOnLoad runs. delayCall
-fires once after the current frame, re-queuing itself if the toolbar
-still isn't ready. Unlike EditorApplication.update, it doesn't poll
-every frame — each call is single-fire.
+Why InitializeOnLoad?
+The toolbar UI (MainToolbarWindow and its "PlayMode" VisualElement) already
+exists when InitializeOnLoad runs, so we can attach directly without
+deferring via delayCall or EditorApplication.update.
 */
 
 [InitializeOnLoad]
@@ -29,20 +28,15 @@ static class DomainReloadToggle
 
     static DomainReloadToggle()
     {
-        EditorApplication.delayCall += TryAttach;
-    }
-
-    static void TryAttach()
-    {
         var toolbar = FindToolbar();
-        if (toolbar == null) { EditorApplication.delayCall += TryAttach; return; }
+        if (toolbar == null) return;
 
         var root = toolbar.rootVisualElement;
-        if (root == null) { EditorApplication.delayCall += TryAttach; return; }
+        if (root == null) return;
         if (root.Q(k_ToggleName) != null) return;
 
         var playMode = root.Q("PlayMode");
-        if (playMode == null) { EditorApplication.delayCall += TryAttach; return; }
+        if (playMode == null) return;
 
         var toggle = new ToolbarToggle
         {
