@@ -5,46 +5,46 @@ using UnityEngine;
 public static class DependencyGraphLayout
 {
     const float NodeHeight = 60f;
-    const float DummyWidth = 8f;
     const float HSpacing = 50f;
-    const float VSpacing = 90f;
+    const float VSpacing = 40f;
+    const int ForceIterations = 150;
+    const float RepulsionStrength = 8000f;
+    const float AttractionStrength = 0.05f;
+    const float Damping = 0.9f;
 
     public static void ApplyLayout(DependencyGraph graph, float startX, float startY)
     {
         if (graph.Nodes.Count == 0) return;
 
-        var layers = ComputeLayers(graph);
-        var layerGroups = GroupByLayer(graph, layers);
-        int maxLayer = layerGroups.Keys.Count > 0 ? layerGroups.Keys.Max() : 0;
-
-        var virtualNodes = new Dictionary<int, List<string>>();
-        var virtualEdges = new List<VirtualEdge>();
-        InsertDummyNodes(graph, layers, layerGroups, maxLayer, virtualNodes, virtualEdges);
-
-        MinimizeCrossings(layerGroups, virtualNodes, virtualEdges, graph, layers, maxLayer);
-
-        AssignPositions(layerGroups, virtualNodes, startX, startY);
+        var layers = ComputeCompactLayers(graph);
+        AssignInitialPositions(graph, layers, startX, startY);
+        RunForceDirectedX(graph, layers);
+        CenterHorizontally(graph, startX);
     }
 
-    #region Layer Assignment
+    #region Compact Layer Assignment
 
-    static Dictionary<string, int> ComputeLayers(DependencyGraph graph)
+    static Dictionary<string, int> ComputeCompactLayers(DependencyGraph graph)
     {
         var layers = new Dictionary<string, int>();
         var visited = new HashSet<string>();
         var inStack = new HashSet<string>();
 
         foreach (var node in graph.Nodes)
-            GetLayer(node.TypeName, graph, layers, visited, inStack);
+            GetDepth(node.TypeName, graph, layers, visited, inStack);
 
-        int maxLayer = layers.Count > 0 ? layers.Values.Max() : 0;
+        if (layers.Count == 0) return layers;
+
+        int maxLayer = layers.Values.Max();
         foreach (var key in layers.Keys.ToList())
             layers[key] = maxLayer - layers[key];
+
+        CompactLayers(graph, layers);
 
         return layers;
     }
 
-    static int GetLayer(string typeName, DependencyGraph graph, Dictionary<string, int> layers,
+    static int GetDepth(string typeName, DependencyGraph graph, Dictionary<string, int> layers,
         HashSet<string> visited, HashSet<string> inStack)
     {
         if (visited.Contains(typeName))
@@ -63,7 +63,7 @@ public static class DependencyGraphLayout
         {
             if (graph.NodesByType.ContainsKey(dep))
             {
-                int depLayer = GetLayer(dep, graph, layers, visited, inStack);
+                int depLayer = GetDepth(dep, graph, layers, visited, inStack);
                 if (depLayer > maxDepLayer)
                     maxDepLayer = depLayer;
             }
@@ -77,7 +77,54 @@ public static class DependencyGraphLayout
         return layer;
     }
 
-    static Dictionary<int, List<ScriptNode>> GroupByLayer(DependencyGraph graph, Dictionary<string, int> layers)
+    static void CompactLayers(DependencyGraph graph, Dictionary<string, int> layers)
+    {
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var node in graph.Nodes)
+            {
+                int currentLayer = layers[node.TypeName];
+                if (currentLayer == 0) continue;
+
+                int minAllowed = 0;
+                foreach (var other in graph.Nodes)
+                {
+                    if (other.DependsOn.Contains(node.TypeName))
+                    {
+                        int parentLayer = layers[other.TypeName];
+                        if (parentLayer + 1 > minAllowed)
+                            minAllowed = parentLayer + 1;
+                    }
+                }
+
+                int maxAllowed = currentLayer;
+                foreach (var dep in node.DependsOn)
+                {
+                    if (!layers.TryGetValue(dep, out int depLayer)) continue;
+                    if (depLayer - 1 < maxAllowed)
+                        maxAllowed = depLayer - 1;
+                }
+
+                int target = Mathf.Max(minAllowed, 0);
+                if (target > maxAllowed) continue;
+
+                if (target < currentLayer)
+                {
+                    layers[node.TypeName] = target;
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    #endregion
+
+    #region Initial Position + Force-Directed X
+
+    static void AssignInitialPositions(DependencyGraph graph, Dictionary<string, int> layers,
+        float startX, float startY)
     {
         var groups = new Dictionary<int, List<ScriptNode>>();
         foreach (var node in graph.Nodes)
@@ -87,290 +134,146 @@ public static class DependencyGraphLayout
                 groups[layer] = new List<ScriptNode>();
             groups[layer].Add(node);
         }
-        return groups;
+
+        foreach (var kvp in groups)
+        {
+            var nodesInLayer = kvp.Value;
+            nodesInLayer.Sort((a, b) => string.Compare(a.TypeName, b.TypeName));
+
+            float y = startY + kvp.Key * (NodeHeight + VSpacing);
+            float totalWidth = 0f;
+            foreach (var n in nodesInLayer)
+                totalWidth += ComputeNodeWidth(n.TypeName) + HSpacing;
+            totalWidth -= HSpacing;
+
+            float x = startX - totalWidth / 2f;
+            foreach (var n in nodesInLayer)
+            {
+                float nw = ComputeNodeWidth(n.TypeName);
+                n.Rect = new Rect(x, y, nw, NodeHeight);
+                x += nw + HSpacing;
+            }
+        }
+    }
+
+    static void RunForceDirectedX(DependencyGraph graph, Dictionary<string, int> layers)
+    {
+        var velocities = new Dictionary<string, float>();
+        foreach (var node in graph.Nodes)
+            velocities[node.TypeName] = 0f;
+
+        var layerGroups = new Dictionary<int, List<ScriptNode>>();
+        foreach (var node in graph.Nodes)
+        {
+            int l = layers[node.TypeName];
+            if (!layerGroups.ContainsKey(l))
+                layerGroups[l] = new List<ScriptNode>();
+            layerGroups[l].Add(node);
+        }
+
+        for (int iter = 0; iter < ForceIterations; iter++)
+        {
+            var forces = new Dictionary<string, float>();
+            foreach (var node in graph.Nodes)
+                forces[node.TypeName] = 0f;
+
+            foreach (var kvp in layerGroups)
+            {
+                var nodesInLayer = kvp.Value;
+                for (int i = 0; i < nodesInLayer.Count; i++)
+                {
+                    for (int j = i + 1; j < nodesInLayer.Count; j++)
+                    {
+                        var a = nodesInLayer[i];
+                        var b = nodesInLayer[j];
+                        float cx = a.Rect.center.x - b.Rect.center.x;
+                        float minDist = (a.Rect.width + b.Rect.width) / 2f + HSpacing;
+                        float dist = Mathf.Max(Mathf.Abs(cx), 1f);
+
+                        float repulsion = RepulsionStrength / (dist * dist);
+                        float sign = cx >= 0 ? 1f : -1f;
+
+                        forces[a.TypeName] += sign * repulsion;
+                        forces[b.TypeName] -= sign * repulsion;
+
+                        if (Mathf.Abs(cx) < minDist)
+                        {
+                            float overlap = minDist - Mathf.Abs(cx);
+                            forces[a.TypeName] += sign * overlap * 0.5f;
+                            forces[b.TypeName] -= sign * overlap * 0.5f;
+                        }
+                    }
+                }
+            }
+
+            foreach (var node in graph.Nodes)
+            {
+                float targetX = 0f;
+                int connections = 0;
+
+                foreach (var dep in node.DependsOn)
+                {
+                    if (graph.NodesByType.TryGetValue(dep, out var target))
+                    {
+                        targetX += target.Rect.center.x;
+                        connections++;
+                    }
+                }
+
+                foreach (var other in graph.Nodes)
+                {
+                    if (other.DependsOn.Contains(node.TypeName))
+                    {
+                        targetX += other.Rect.center.x;
+                        connections++;
+                    }
+                }
+
+                if (connections > 0)
+                {
+                    targetX /= connections;
+                    float dx = targetX - node.Rect.center.x;
+                    forces[node.TypeName] += dx * AttractionStrength;
+                }
+            }
+
+            foreach (var node in graph.Nodes)
+            {
+                float v = velocities[node.TypeName] + forces[node.TypeName];
+                v *= Damping;
+                velocities[node.TypeName] = v;
+
+                var r = node.Rect;
+                r.x += v;
+                node.Rect = r;
+            }
+        }
     }
 
     #endregion
 
-    #region Dummy Nodes
+    #region Centering
 
-    struct VirtualEdge
+    static void CenterHorizontally(DependencyGraph graph, float startX)
     {
-        public string From;
-        public int FromLayer;
-        public string To;
-        public int ToLayer;
-    }
+        if (graph.Nodes.Count == 0) return;
 
-    static void InsertDummyNodes(DependencyGraph graph, Dictionary<string, int> layers,
-        Dictionary<int, List<ScriptNode>> layerGroups, int maxLayer,
-        Dictionary<int, List<string>> virtualNodes, List<VirtualEdge> virtualEdges)
-    {
-        int dummyId = 0;
+        float minX = float.MaxValue, maxX = float.MinValue;
+        foreach (var node in graph.Nodes)
+        {
+            if (node.Rect.x < minX) minX = node.Rect.x;
+            if (node.Rect.xMax > maxX) maxX = node.Rect.xMax;
+        }
+
+        float graphCenterX = (minX + maxX) / 2f;
+        float offset = startX - graphCenterX;
 
         foreach (var node in graph.Nodes)
         {
-            int srcLayer = layers[node.TypeName];
-
-            foreach (var dep in node.DependsOn)
-            {
-                if (!layers.TryGetValue(dep, out int dstLayer)) continue;
-
-                int topLayer = Mathf.Min(srcLayer, dstLayer);
-                int botLayer = Mathf.Max(srcLayer, dstLayer);
-                int span = botLayer - topLayer;
-
-                if (span <= 1)
-                {
-                    virtualEdges.Add(new VirtualEdge
-                    {
-                        From = node.TypeName, FromLayer = srcLayer,
-                        To = dep, ToLayer = dstLayer
-                    });
-                    continue;
-                }
-
-                string prev = node.TypeName;
-                int prevLayer = srcLayer;
-                int dir = srcLayer < dstLayer ? 1 : -1;
-
-                for (int l = srcLayer + dir; l != dstLayer; l += dir)
-                {
-                    string dummyName = $"__dummy_{dummyId++}";
-
-                    if (!virtualNodes.ContainsKey(l))
-                        virtualNodes[l] = new List<string>();
-                    virtualNodes[l].Add(dummyName);
-
-                    virtualEdges.Add(new VirtualEdge
-                    {
-                        From = prev, FromLayer = prevLayer,
-                        To = dummyName, ToLayer = l
-                    });
-
-                    prev = dummyName;
-                    prevLayer = l;
-                }
-
-                virtualEdges.Add(new VirtualEdge
-                {
-                    From = prev, FromLayer = prevLayer,
-                    To = dep, ToLayer = dstLayer
-                });
-            }
+            var r = node.Rect;
+            r.x += offset;
+            node.Rect = r;
         }
-
-        foreach (var kvp in virtualNodes)
-        {
-            if (!layerGroups.ContainsKey(kvp.Key))
-                layerGroups[kvp.Key] = new List<ScriptNode>();
-        }
-    }
-
-    #endregion
-
-    #region Crossing Minimization
-
-    static void MinimizeCrossings(Dictionary<int, List<ScriptNode>> layerGroups,
-        Dictionary<int, List<string>> virtualNodes, List<VirtualEdge> virtualEdges,
-        DependencyGraph graph, Dictionary<string, int> layers, int maxLayer)
-    {
-        var layerOrder = new Dictionary<int, List<string>>();
-        for (int l = 0; l <= maxLayer; l++)
-        {
-            var order = new List<string>();
-            if (layerGroups.ContainsKey(l))
-            {
-                foreach (var n in layerGroups[l])
-                    order.Add(n.TypeName);
-            }
-            if (virtualNodes.ContainsKey(l))
-                order.AddRange(virtualNodes[l]);
-
-            order.Sort();
-            layerOrder[l] = order;
-        }
-
-        var adjUp = BuildAdjacency(virtualEdges, maxLayer, up: true);
-        var adjDown = BuildAdjacency(virtualEdges, maxLayer, up: false);
-
-        for (int pass = 0; pass < 12; pass++)
-        {
-            if (pass % 2 == 0)
-            {
-                for (int l = 1; l <= maxLayer; l++)
-                    SortLayerByBarycenter(layerOrder, l, layerOrder[l - 1], adjUp);
-            }
-            else
-            {
-                for (int l = maxLayer - 1; l >= 0; l--)
-                    SortLayerByBarycenter(layerOrder, l, layerOrder[l + 1], adjDown);
-            }
-        }
-
-        for (int l = 0; l <= maxLayer; l++)
-        {
-            if (!layerGroups.ContainsKey(l)) continue;
-
-            var posMap = new Dictionary<string, int>();
-            for (int i = 0; i < layerOrder[l].Count; i++)
-                posMap[layerOrder[l][i]] = i;
-
-            layerGroups[l].Sort((a, b) =>
-            {
-                int posA = posMap.TryGetValue(a.TypeName, out var pa) ? pa : 999;
-                int posB = posMap.TryGetValue(b.TypeName, out var pb) ? pb : 999;
-                return posA.CompareTo(posB);
-            });
-
-            if (virtualNodes.ContainsKey(l))
-            {
-                virtualNodes[l].Sort((a, b) =>
-                {
-                    int posA = posMap.TryGetValue(a, out var pa) ? pa : 999;
-                    int posB = posMap.TryGetValue(b, out var pb) ? pb : 999;
-                    return posA.CompareTo(posB);
-                });
-            }
-        }
-    }
-
-    static Dictionary<string, List<string>> BuildAdjacency(List<VirtualEdge> edges, int maxLayer, bool up)
-    {
-        var adj = new Dictionary<string, List<string>>();
-        foreach (var e in edges)
-        {
-            string child = up ? (e.FromLayer > e.ToLayer ? e.From : e.To) : (e.FromLayer < e.ToLayer ? e.From : e.To);
-            string parent = up ? (e.FromLayer > e.ToLayer ? e.To : e.From) : (e.FromLayer < e.ToLayer ? e.To : e.From);
-
-            if (!adj.ContainsKey(child))
-                adj[child] = new List<string>();
-            adj[child].Add(parent);
-        }
-        return adj;
-    }
-
-    static void SortLayerByBarycenter(Dictionary<int, List<string>> layerOrder, int layer,
-        List<string> refLayer, Dictionary<string, List<string>> adj)
-    {
-        var refPos = new Dictionary<string, int>();
-        for (int i = 0; i < refLayer.Count; i++)
-            refPos[refLayer[i]] = i;
-
-        var items = layerOrder[layer];
-        items.Sort((a, b) =>
-        {
-            float bcA = GetBarycenterValue(a, refPos, adj);
-            float bcB = GetBarycenterValue(b, refPos, adj);
-            return bcA.CompareTo(bcB);
-        });
-    }
-
-    static float GetBarycenterValue(string nodeName, Dictionary<string, int> refPos,
-        Dictionary<string, List<string>> adj)
-    {
-        if (!adj.TryGetValue(nodeName, out var neighbors) || neighbors.Count == 0)
-            return float.MaxValue;
-
-        float sum = 0;
-        int count = 0;
-        foreach (var n in neighbors)
-        {
-            if (refPos.TryGetValue(n, out int pos))
-            {
-                sum += pos;
-                count++;
-            }
-        }
-        return count > 0 ? sum / count : float.MaxValue;
-    }
-
-    #endregion
-
-    #region Position Assignment
-
-    static void AssignPositions(Dictionary<int, List<ScriptNode>> layerGroups,
-        Dictionary<int, List<string>> virtualNodes, float startX, float startY)
-    {
-        int maxLayer = layerGroups.Keys.Count > 0 ? layerGroups.Keys.Max() : 0;
-
-        float widestLayer = 0f;
-        for (int l = 0; l <= maxLayer; l++)
-        {
-            float w = ComputeMixedLayerWidth(
-                layerGroups.ContainsKey(l) ? layerGroups[l] : null,
-                virtualNodes.ContainsKey(l) ? virtualNodes[l] : null);
-            if (w > widestLayer) widestLayer = w;
-        }
-
-        float centerX = startX + widestLayer / 2f;
-
-        for (int l = 0; l <= maxLayer; l++)
-        {
-            var realNodes = layerGroups.ContainsKey(l) ? layerGroups[l] : null;
-            var dummies = virtualNodes.ContainsKey(l) ? virtualNodes[l] : null;
-
-            float layerWidth = ComputeMixedLayerWidth(realNodes, dummies);
-            float x = centerX - layerWidth / 2f;
-            float y = startY + l * (NodeHeight + VSpacing);
-
-            int realIdx = 0;
-            int dummyIdx = 0;
-            int totalReal = realNodes?.Count ?? 0;
-            int totalDummy = dummies?.Count ?? 0;
-            int total = totalReal + totalDummy;
-
-            var realSet = new HashSet<string>();
-            if (realNodes != null)
-                foreach (var n in realNodes) realSet.Add(n.TypeName);
-
-            var merged = new List<string>();
-            if (realNodes != null) foreach (var n in realNodes) merged.Add(n.TypeName);
-            if (dummies != null) merged.AddRange(dummies);
-
-            foreach (var name in merged)
-            {
-                if (realSet.Contains(name))
-                {
-                    var node = realNodes.First(n => n.TypeName == name);
-                    float nw = ComputeNodeWidth(name);
-                    node.Rect = new Rect(x, y, nw, NodeHeight);
-                    x += nw + HSpacing;
-                }
-                else
-                {
-                    x += DummyWidth + HSpacing;
-                }
-            }
-        }
-    }
-
-    static float ComputeMixedLayerWidth(List<ScriptNode> realNodes, List<string> dummies)
-    {
-        float total = 0f;
-        int count = 0;
-
-        if (realNodes != null)
-        {
-            foreach (var n in realNodes)
-            {
-                if (count > 0) total += HSpacing;
-                total += ComputeNodeWidth(n.TypeName);
-                count++;
-            }
-        }
-
-        if (dummies != null)
-        {
-            foreach (var d in dummies)
-            {
-                if (count > 0) total += HSpacing;
-                total += DummyWidth;
-                count++;
-            }
-        }
-
-        return total;
     }
 
     public static float ComputeNodeWidth(string typeName)
