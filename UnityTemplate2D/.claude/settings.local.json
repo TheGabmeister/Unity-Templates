@@ -7,7 +7,6 @@
       "WebFetch",
       "Bash(curl -s *)",
       "Bash(curl -sL *)",
-      "Bash(python generate_sprites.py)",
       "Bash(inkscape *)",
       "Bash(ffmpeg *)",
       "Bash(fluidsynth *)",
@@ -19,7 +18,10 @@
       "Bash(kill *)",
       "Bash(wait)",
       "Bash(where *)",
-      "Bash(taskkill *)"
+      "Bash(taskkill *)",
+      "Bash(find *)",
+      "Read(//c/Program Files/Unity/**)",
+      "Bash(xargs *)",
     ],
     "additionalDirectories": [
       "C:\\Users\\Admin\\.claude"
