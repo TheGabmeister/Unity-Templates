@@ -15,10 +15,10 @@ through it are hidden by default and require the user to right-click the
 toolbar to enable them. This approach injects directly into the toolbar's
 VisualElement tree so the toggle is always visible without manual setup.
 
-Why InitializeOnLoad?
-The toolbar UI (MainToolbarWindow and its "PlayMode" VisualElement) already
-exists when InitializeOnLoad runs, so we can attach directly without
-deferring via delayCall or EditorApplication.update.
+Why EditorApplication.update?
+On a fresh editor startup, the toolbar window may not exist yet when
+InitializeOnLoad runs. We poll via EditorApplication.update until the
+toolbar and its PlayMode element become available, then unsubscribe.
 */
 
 [InitializeOnLoad]
@@ -26,29 +26,19 @@ static class DomainReloadToggle
 {
     const string k_ToggleName = "domain-reload-toggle";
 
-    static DomainReloadToggle()
+    static DomainReloadToggle() => EditorApplication.update += TryAttach;
+
+    static void TryAttach()
     {
         var toolbar = FindToolbar();
-        if (toolbar == null) 
-        { 
-            Debug.LogWarning("[DomainReloadToggle] Toolbar window not found. Toggle will not appear."); 
-            return; 
-        }
-
+        if (toolbar == null) return;
         var root = toolbar.rootVisualElement;
-        if (root == null) 
-        { 
-            Debug.LogWarning("[DomainReloadToggle] Toolbar has no rootVisualElement. Toggle will not appear."); 
-            return; 
-        }
-        if (root.Q(k_ToggleName) != null) return;
-
+        if (root == null) return;
         var playMode = root.Q("PlayMode");
-        if (playMode == null) 
-        { 
-            Debug.LogWarning("[DomainReloadToggle] PlayMode element not found in toolbar. Toggle will not appear."); 
-            return; 
-        }
+        if (playMode == null) return;
+
+        EditorApplication.update -= TryAttach;
+        if (root.Q(k_ToggleName) != null) return;
 
         var toggle = new ToolbarToggle
         {
