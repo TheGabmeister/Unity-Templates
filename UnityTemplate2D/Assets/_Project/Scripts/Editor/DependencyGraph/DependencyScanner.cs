@@ -71,6 +71,13 @@ public static class DependencyScanner
         @"GetComponent(?:InChildren|InParent|s)?<\s*(\w+)\s*>",
         RegexOptions.Compiled);
 
+    static readonly Regex SingleLineCommentRegex = new(@"//.*$", RegexOptions.Compiled | RegexOptions.Multiline);
+    static readonly Regex MultiLineCommentRegex = new(@"/\*[\s\S]*?\*/", RegexOptions.Compiled);
+    static readonly Regex VerbatimStringRegex = new(@"@""(?:[^""]|"""")*""", RegexOptions.Compiled);
+    static readonly Regex StringLiteralRegex = new(@"""(?:[^""\\]|\\.)*""", RegexOptions.Compiled);
+    static readonly Regex UsingDirectiveRegex = new(@"^\s*using\s+[\w.]+\s*;\s*$", RegexOptions.Compiled | RegexOptions.Multiline);
+    static readonly Regex AttributeRegex = new(@"\[[\w\s,()""\.=]+\]", RegexOptions.Compiled);
+
     static readonly HashSet<string> CSharpKeywords = new()
     {
         "void", "int", "float", "double", "string", "bool", "byte", "char",
@@ -139,12 +146,12 @@ public static class DependencyScanner
 
     static string StripNoise(string source)
     {
-        source = Regex.Replace(source, @"//.*$", "", RegexOptions.Multiline);
-        source = Regex.Replace(source, @"/\*[\s\S]*?\*/", "");
-        source = Regex.Replace(source, @"@""(?:[^""]|"""")*""", "\"\"");
-        source = Regex.Replace(source, @"""(?:[^""\\]|\\.)*""", "\"\"");
-        source = Regex.Replace(source, @"^\s*using\s+[\w.]+\s*;\s*$", "", RegexOptions.Multiline);
-        source = Regex.Replace(source, @"\[[\w\s,()""\.=]+\]", "");
+        source = SingleLineCommentRegex.Replace(source, "");
+        source = MultiLineCommentRegex.Replace(source, "");
+        source = VerbatimStringRegex.Replace(source, "\"\"");
+        source = StringLiteralRegex.Replace(source, "\"\"");
+        source = UsingDirectiveRegex.Replace(source, "");
+        source = AttributeRegex.Replace(source, "");
         return source;
     }
 

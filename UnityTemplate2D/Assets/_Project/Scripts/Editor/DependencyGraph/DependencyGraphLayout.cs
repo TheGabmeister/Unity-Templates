@@ -16,15 +16,52 @@ public static class DependencyGraphLayout
     {
         if (graph.Nodes.Count == 0) return;
 
-        var layers = ComputeCompactLayers(graph);
-        AssignInitialPositions(graph, layers, startX, startY);
-        RunForceDirectedX(graph, layers);
+        var reverseDeps = BuildReverseDeps(graph);
+        var layers = ComputeCompactLayers(graph, reverseDeps);
+        var layerGroups = GroupByLayer(graph, layers);
+        AssignInitialPositions(layerGroups, startX, startY);
+        RunForceDirectedX(graph, reverseDeps, layerGroups);
         CenterHorizontally(graph, startX);
+    }
+
+    static Dictionary<string, List<string>> BuildReverseDeps(DependencyGraph graph)
+    {
+        var reverse = new Dictionary<string, List<string>>();
+        foreach (var node in graph.Nodes)
+        {
+            foreach (var dep in node.DependsOn)
+            {
+                if (!reverse.TryGetValue(dep, out var list))
+                {
+                    list = new List<string>();
+                    reverse[dep] = list;
+                }
+                list.Add(node.TypeName);
+            }
+        }
+        return reverse;
+    }
+
+    static Dictionary<int, List<ScriptNode>> GroupByLayer(DependencyGraph graph, Dictionary<string, int> layers)
+    {
+        var groups = new Dictionary<int, List<ScriptNode>>();
+        foreach (var node in graph.Nodes)
+        {
+            int layer = layers.TryGetValue(node.TypeName, out var l) ? l : 0;
+            if (!groups.TryGetValue(layer, out var list))
+            {
+                list = new List<ScriptNode>();
+                groups[layer] = list;
+            }
+            list.Add(node);
+        }
+        return groups;
     }
 
     #region Compact Layer Assignment
 
-    static Dictionary<string, int> ComputeCompactLayers(DependencyGraph graph)
+    static Dictionary<string, int> ComputeCompactLayers(DependencyGraph graph,
+        Dictionary<string, List<string>> reverseDeps)
     {
         var layers = new Dictionary<string, int>();
         var visited = new HashSet<string>();
@@ -39,7 +76,7 @@ public static class DependencyGraphLayout
         foreach (var key in layers.Keys.ToList())
             layers[key] = maxLayer - layers[key];
 
-        CompactLayers(graph, layers);
+        CompactLayers(graph, layers, reverseDeps);
 
         return layers;
     }
@@ -77,7 +114,8 @@ public static class DependencyGraphLayout
         return layer;
     }
 
-    static void CompactLayers(DependencyGraph graph, Dictionary<string, int> layers)
+    static void CompactLayers(DependencyGraph graph, Dictionary<string, int> layers,
+        Dictionary<string, List<string>> reverseDeps)
     {
         bool changed = true;
         while (changed)
@@ -89,11 +127,11 @@ public static class DependencyGraphLayout
                 if (currentLayer == 0) continue;
 
                 int minAllowed = 0;
-                foreach (var other in graph.Nodes)
+                if (reverseDeps.TryGetValue(node.TypeName, out var parents))
                 {
-                    if (other.DependsOn.Contains(node.TypeName))
+                    foreach (var parentName in parents)
                     {
-                        int parentLayer = layers[other.TypeName];
+                        int parentLayer = layers[parentName];
                         if (parentLayer + 1 > minAllowed)
                             minAllowed = parentLayer + 1;
                     }
@@ -123,19 +161,10 @@ public static class DependencyGraphLayout
 
     #region Initial Position + Force-Directed X
 
-    static void AssignInitialPositions(DependencyGraph graph, Dictionary<string, int> layers,
+    static void AssignInitialPositions(Dictionary<int, List<ScriptNode>> layerGroups,
         float startX, float startY)
     {
-        var groups = new Dictionary<int, List<ScriptNode>>();
-        foreach (var node in graph.Nodes)
-        {
-            int layer = layers.TryGetValue(node.TypeName, out var l) ? l : 0;
-            if (!groups.ContainsKey(layer))
-                groups[layer] = new List<ScriptNode>();
-            groups[layer].Add(node);
-        }
-
-        foreach (var kvp in groups)
+        foreach (var kvp in layerGroups)
         {
             var nodesInLayer = kvp.Value;
             nodesInLayer.Sort((a, b) => string.Compare(a.TypeName, b.TypeName));
@@ -156,26 +185,22 @@ public static class DependencyGraphLayout
         }
     }
 
-    static void RunForceDirectedX(DependencyGraph graph, Dictionary<string, int> layers)
+    static void RunForceDirectedX(DependencyGraph graph,
+        Dictionary<string, List<string>> reverseDeps,
+        Dictionary<int, List<ScriptNode>> layerGroups)
     {
         var velocities = new Dictionary<string, float>();
-        foreach (var node in graph.Nodes)
-            velocities[node.TypeName] = 0f;
-
-        var layerGroups = new Dictionary<int, List<ScriptNode>>();
+        var forces = new Dictionary<string, float>();
         foreach (var node in graph.Nodes)
         {
-            int l = layers[node.TypeName];
-            if (!layerGroups.ContainsKey(l))
-                layerGroups[l] = new List<ScriptNode>();
-            layerGroups[l].Add(node);
+            velocities[node.TypeName] = 0f;
+            forces[node.TypeName] = 0f;
         }
 
         for (int iter = 0; iter < ForceIterations; iter++)
         {
-            var forces = new Dictionary<string, float>();
-            foreach (var node in graph.Nodes)
-                forces[node.TypeName] = 0f;
+            foreach (var key in forces.Keys.ToList())
+                forces[key] = 0f;
 
             foreach (var kvp in layerGroups)
             {
@@ -220,12 +245,15 @@ public static class DependencyGraphLayout
                     }
                 }
 
-                foreach (var other in graph.Nodes)
+                if (reverseDeps.TryGetValue(node.TypeName, out var parents))
                 {
-                    if (other.DependsOn.Contains(node.TypeName))
+                    foreach (var parentName in parents)
                     {
-                        targetX += other.Rect.center.x;
-                        connections++;
+                        if (graph.NodesByType.TryGetValue(parentName, out var parent))
+                        {
+                            targetX += parent.Rect.center.x;
+                            connections++;
+                        }
                     }
                 }
 
@@ -265,9 +293,7 @@ public static class DependencyGraphLayout
             if (node.Rect.xMax > maxX) maxX = node.Rect.xMax;
         }
 
-        float graphCenterX = (minX + maxX) / 2f;
-        float offset = startX - graphCenterX;
-
+        float offset = startX - (minX + maxX) / 2f;
         foreach (var node in graph.Nodes)
         {
             var r = node.Rect;

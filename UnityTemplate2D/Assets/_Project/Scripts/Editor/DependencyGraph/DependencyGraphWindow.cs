@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -11,17 +12,21 @@ public class DependencyGraphWindow : EditorWindow
     bool _scanRequested;
     string _scanFolder = "Assets/_Project/Scripts";
     float _zoom = 1f;
+    float _lastStyledZoom = -1f;
+    Dictionary<string, int> _refCounts;
+    int _edgeCount;
+
     const float ZoomMin = 0.25f;
     const float ZoomMax = 2f;
-
     const float ToolbarHeight = 21f;
     const float ArrowSize = 12f;
     const float ArrowAngle = 20f;
     const float EdgeWidth = 2.5f;
+    static readonly Color EdgeColor = new(0.8f, 0.8f, 0.8f, 0.6f);
 
-    static GUIStyle _nodeStyle;
-    static GUIStyle _titleStyle;
-    static GUIStyle _subtitleStyle;
+    GUIStyle _nodeStyle;
+    GUIStyle _titleStyle;
+    GUIStyle _subtitleStyle;
 
     [MenuItem("Tools/Dependency Graph")]
     static void Open()
@@ -39,6 +44,7 @@ public class DependencyGraphWindow : EditorWindow
             if (_graph != null && _graph.Nodes.Count > 0)
             {
                 DependencyGraphLayout.ApplyLayout(_graph, 50f, 50f);
+                CacheGraphStats();
                 CenterGraph();
             }
             Repaint();
@@ -62,6 +68,21 @@ public class DependencyGraphWindow : EditorWindow
             Repaint();
     }
 
+    void CacheGraphStats()
+    {
+        _refCounts = new Dictionary<string, int>();
+        _edgeCount = 0;
+        foreach (var node in _graph.Nodes)
+        {
+            foreach (var dep in node.DependsOn)
+            {
+                _refCounts.TryGetValue(dep, out int c);
+                _refCounts[dep] = c + 1;
+                _edgeCount++;
+            }
+        }
+    }
+
     void InitStyles()
     {
         _nodeStyle ??= new GUIStyle("flow node 0");
@@ -76,10 +97,14 @@ public class DependencyGraphWindow : EditorWindow
             normal = { textColor = new Color(0.7f, 0.7f, 0.7f) }
         };
 
-        int pad = Mathf.Max(1, Mathf.RoundToInt(8 * _zoom));
-        _nodeStyle.padding = new RectOffset(pad, pad, pad, pad);
-        _titleStyle.fontSize = Mathf.Max(1, Mathf.RoundToInt(11 * _zoom));
-        _subtitleStyle.fontSize = Mathf.Max(1, Mathf.RoundToInt(9 * _zoom));
+        if (!Mathf.Approximately(_lastStyledZoom, _zoom))
+        {
+            _lastStyledZoom = _zoom;
+            int pad = Mathf.Max(1, Mathf.RoundToInt(8 * _zoom));
+            _nodeStyle.padding = new RectOffset(pad, pad, pad, pad);
+            _titleStyle.fontSize = Mathf.Max(1, Mathf.RoundToInt(11 * _zoom));
+            _subtitleStyle.fontSize = Mathf.Max(1, Mathf.RoundToInt(9 * _zoom));
+        }
     }
 
     void DrawToolbar()
@@ -109,12 +134,7 @@ public class DependencyGraphWindow : EditorWindow
         GUILayout.Space(10);
 
         if (_graph != null && _graph.Nodes.Count > 0)
-        {
-            int edgeCount = 0;
-            foreach (var n in _graph.Nodes)
-                edgeCount += n.DependsOn.Count;
-            GUILayout.Label($"{_graph.Nodes.Count} scripts, {edgeCount} dependencies");
-        }
+            GUILayout.Label($"{_graph.Nodes.Count} scripts, {_edgeCount} dependencies");
 
         GUILayout.FlexibleSpace();
 
@@ -168,7 +188,7 @@ public class DependencyGraphWindow : EditorWindow
         GUILayout.Label(node.TypeName, _titleStyle);
 
         int depCount = node.DependsOn.Count;
-        int refCount = CountReferencesTo(node.TypeName);
+        _refCounts.TryGetValue(node.TypeName, out int refCount);
         GUILayout.Label($"Deps: {depCount}  Refs: {refCount}", _subtitleStyle);
 
         var e = Event.current;
@@ -188,6 +208,7 @@ public class DependencyGraphWindow : EditorWindow
         if (_graph == null) return;
 
         Handles.BeginGUI();
+        Handles.color = EdgeColor;
 
         foreach (var node in _graph.Nodes)
         {
@@ -206,11 +227,8 @@ public class DependencyGraphWindow : EditorWindow
                 var dir = (endRaw - startPoint).normalized;
                 var endPoint = endRaw - dir * ArrowSize;
 
-                var edgeColor = new Color(0.8f, 0.8f, 0.8f, 0.6f);
-                Handles.color = edgeColor;
                 Handles.DrawAAPolyLine(EdgeWidth, startPoint, endPoint);
-
-                DrawArrowhead(endRaw, dir, edgeColor);
+                DrawArrowhead(endRaw, dir);
             }
         }
 
@@ -276,14 +294,14 @@ public class DependencyGraphWindow : EditorWindow
             if (node.Rect.yMax > maxY) maxY = node.Rect.yMax;
         }
 
-        float graphWidth = maxX - minX;
-        float graphHeight = maxY - minY;
+        float graphWidth = (maxX - minX) * _zoom;
+        float graphHeight = (maxY - minY) * _zoom;
         float viewWidth = position.width;
         float viewHeight = position.height - ToolbarHeight;
 
         _panOffset = new Vector2(
-            (viewWidth - graphWidth) / 2f - minX,
-            (viewHeight - graphHeight) / 2f - minY);
+            (viewWidth - graphWidth) / 2f - minX * _zoom,
+            (viewHeight - graphHeight) / 2f - minY * _zoom);
     }
 
     Rect GetScreenRect(ScriptNode node)
@@ -293,17 +311,6 @@ public class DependencyGraphWindow : EditorWindow
             node.Rect.y * _zoom + _panOffset.y + ToolbarHeight,
             node.Rect.width * _zoom,
             node.Rect.height * _zoom);
-    }
-
-    int CountReferencesTo(string typeName)
-    {
-        int count = 0;
-        foreach (var node in _graph.Nodes)
-        {
-            if (node.DependsOn.Contains(typeName))
-                count++;
-        }
-        return count;
     }
 
     static Vector2 GetNearestEdgePoint(Rect rect, Vector2 externalPoint)
@@ -324,22 +331,7 @@ public class DependencyGraphWindow : EditorWindow
         return center + dir * scale;
     }
 
-    static Vector2 GetEdgeDirection(Rect rect, Vector2 edgePoint)
-    {
-        bool onLeft = Mathf.Abs(edgePoint.x - rect.xMin) < 1f;
-        bool onRight = Mathf.Abs(edgePoint.x - rect.xMax) < 1f;
-        bool onTop = Mathf.Abs(edgePoint.y - rect.yMin) < 1f;
-        bool onBottom = Mathf.Abs(edgePoint.y - rect.yMax) < 1f;
-
-        if (onLeft) return Vector2.left;
-        if (onRight) return Vector2.right;
-        if (onTop) return Vector2.up;
-        if (onBottom) return Vector2.down;
-
-        return (edgePoint - rect.center).normalized;
-    }
-
-    static void DrawArrowhead(Vector2 tip, Vector2 direction, Color color)
+    static void DrawArrowhead(Vector2 tip, Vector2 direction)
     {
         direction.Normalize();
         float rad = ArrowAngle * Mathf.Deg2Rad;
@@ -352,7 +344,6 @@ public class DependencyGraphWindow : EditorWindow
             direction.x * Mathf.Cos(-rad) - direction.y * Mathf.Sin(-rad),
             direction.x * Mathf.Sin(-rad) + direction.y * Mathf.Cos(-rad));
 
-        Handles.color = color;
         Handles.DrawAAConvexPolygon(
             (Vector3)tip,
             (Vector3)(tip - right * ArrowSize),
