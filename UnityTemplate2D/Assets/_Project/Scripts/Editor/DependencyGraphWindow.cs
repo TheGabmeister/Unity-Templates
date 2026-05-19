@@ -18,6 +18,7 @@ public class DependencyGraphWindow : EditorWindow
     static GUIStyle _nodeStyle;
     static GUIStyle _titleStyle;
     static GUIStyle _subtitleStyle;
+    static Material _glMaterial;
 
     [MenuItem("Tools/Dependency Graph")]
     static void Open()
@@ -174,19 +175,16 @@ public class DependencyGraphWindow : EditorWindow
                 var targetRect = GetScreenRect(target);
 
                 var startPoint = GetNearestEdgePoint(sourceRect, targetRect.center);
-                var endPoint = GetNearestEdgePoint(targetRect, sourceRect.center);
+                var endRaw = GetNearestEdgePoint(targetRect, sourceRect.center);
 
-                float dist = Vector2.Distance(startPoint, endPoint);
-                float tangentStrength = Mathf.Clamp(dist * 0.3f, 20f, 80f);
-                var startTangent = startPoint + GetEdgeDirection(sourceRect, startPoint) * tangentStrength;
-                var endTangent = endPoint + GetEdgeDirection(targetRect, endPoint) * tangentStrength;
+                var dir = (endRaw - startPoint).normalized;
+                var endPoint = endRaw - dir * ArrowSize;
 
                 var edgeColor = new Color(0.8f, 0.8f, 0.8f, 0.6f);
-                Handles.DrawBezier(startPoint, endPoint, startTangent, endTangent, edgeColor, null, EdgeWidth);
+                Handles.color = edgeColor;
+                Handles.DrawAAPolyLine(EdgeWidth, startPoint, endPoint);
 
-                var arrowDir = (endPoint - endTangent).normalized;
-                if (arrowDir.sqrMagnitude > 0.001f)
-                    DrawArrowhead(endPoint, arrowDir, edgeColor);
+                DrawArrowhead(endRaw, dir, edgeColor);
             }
         }
 
@@ -296,6 +294,15 @@ public class DependencyGraphWindow : EditorWindow
         return (edgePoint - rect.center).normalized;
     }
 
+    static void EnsureGLMaterial()
+    {
+        if (_glMaterial != null) return;
+        var shader = Shader.Find("Hidden/Internal-Colored");
+        _glMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+        _glMaterial.SetInt("_ZWrite", 0);
+        _glMaterial.SetInt("_Cull", 0);
+    }
+
     static void DrawArrowhead(Vector2 tip, Vector2 direction, Color color)
     {
         direction.Normalize();
@@ -309,10 +316,19 @@ public class DependencyGraphWindow : EditorWindow
             direction.x * Mathf.Cos(-rad) - direction.y * Mathf.Sin(-rad),
             direction.x * Mathf.Sin(-rad) + direction.y * Mathf.Cos(-rad));
 
-        Handles.color = color;
-        Handles.DrawAAConvexPolygon(
-            (Vector3)tip,
-            (Vector3)(tip - right * ArrowSize),
-            (Vector3)(tip - left * ArrowSize));
+        Vector3 p0 = tip;
+        Vector3 p1 = tip - right * ArrowSize;
+        Vector3 p2 = tip - left * ArrowSize;
+
+        EnsureGLMaterial();
+        GL.PushMatrix();
+        _glMaterial.SetPass(0);
+        GL.Begin(GL.TRIANGLES);
+        GL.Color(color);
+        GL.Vertex(p0);
+        GL.Vertex(p1);
+        GL.Vertex(p2);
+        GL.End();
+        GL.PopMatrix();
     }
 }
