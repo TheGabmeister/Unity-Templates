@@ -29,14 +29,26 @@ static class DomainReloadToggle
     static DomainReloadToggle()
     {
         var toolbar = FindToolbar();
-        if (toolbar == null) return;
+        if (toolbar == null) 
+        { 
+            Debug.LogWarning("[DomainReloadToggle] Toolbar window not found. Toggle will not appear."); 
+            return; 
+        }
 
         var root = toolbar.rootVisualElement;
-        if (root == null) return;
+        if (root == null) 
+        { 
+            Debug.LogWarning("[DomainReloadToggle] Toolbar has no rootVisualElement. Toggle will not appear."); 
+            return; 
+        }
         if (root.Q(k_ToggleName) != null) return;
 
         var playMode = root.Q("PlayMode");
-        if (playMode == null) return;
+        if (playMode == null) 
+        { 
+            Debug.LogWarning("[DomainReloadToggle] PlayMode element not found in toolbar. Toggle will not appear."); 
+            return; 
+        }
 
         var toggle = new ToolbarToggle
         {
