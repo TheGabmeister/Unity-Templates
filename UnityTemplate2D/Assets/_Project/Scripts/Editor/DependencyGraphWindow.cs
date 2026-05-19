@@ -9,6 +9,10 @@ public class DependencyGraphWindow : EditorWindow
     Vector2 _panStartMouse;
     Vector2 _panStartOffset;
     bool _scanRequested;
+    string _scanFolder = "Assets/_Project/Scripts";
+    float _zoom = 1f;
+    const float ZoomMin = 0.25f;
+    const float ZoomMax = 2f;
 
     const float ToolbarHeight = 21f;
     const float ArrowSize = 12f;
@@ -31,7 +35,7 @@ public class DependencyGraphWindow : EditorWindow
         if (_scanRequested && Event.current.type == EventType.Layout)
         {
             _scanRequested = false;
-            _graph = DependencyScanner.Scan();
+            _graph = DependencyScanner.Scan(_scanFolder);
             if (_graph != null && _graph.Nodes.Count > 0)
             {
                 DependencyGraphLayout.ApplyLayout(_graph, 50f, 50f);
@@ -49,6 +53,7 @@ public class DependencyGraphWindow : EditorWindow
             return;
         }
 
+        HandleZoom();
         HandlePanning();
         DrawEdges();
         DrawNodes();
@@ -59,23 +64,22 @@ public class DependencyGraphWindow : EditorWindow
 
     void InitStyles()
     {
-        if (_nodeStyle != null) return;
-
-        _nodeStyle = new GUIStyle("flow node 0")
-        {
-            padding = new RectOffset(10, 10, 8, 8)
-        };
-        _titleStyle = new GUIStyle(EditorStyles.boldLabel)
+        _nodeStyle ??= new GUIStyle("flow node 0");
+        _titleStyle ??= new GUIStyle(EditorStyles.boldLabel)
         {
             alignment = TextAnchor.UpperCenter,
-            fontSize = 11,
             normal = { textColor = Color.white }
         };
-        _subtitleStyle = new GUIStyle(EditorStyles.miniLabel)
+        _subtitleStyle ??= new GUIStyle(EditorStyles.miniLabel)
         {
             alignment = TextAnchor.UpperCenter,
             normal = { textColor = new Color(0.7f, 0.7f, 0.7f) }
         };
+
+        int pad = Mathf.Max(1, Mathf.RoundToInt(8 * _zoom));
+        _nodeStyle.padding = new RectOffset(pad, pad, pad, pad);
+        _titleStyle.fontSize = Mathf.Max(1, Mathf.RoundToInt(11 * _zoom));
+        _subtitleStyle.fontSize = Mathf.Max(1, Mathf.RoundToInt(9 * _zoom));
     }
 
     void DrawToolbar()
@@ -88,6 +92,22 @@ public class DependencyGraphWindow : EditorWindow
             Repaint();
         }
 
+        GUILayout.Label(_scanFolder, EditorStyles.toolbarButton, GUILayout.MinWidth(100));
+
+        if (GUILayout.Button("Browse", EditorStyles.toolbarButton, GUILayout.Width(60)))
+        {
+            var picked = EditorUtility.OpenFolderPanel("Select Scripts Folder", _scanFolder, "");
+            if (!string.IsNullOrEmpty(picked))
+            {
+                var dataPath = Application.dataPath.Replace('\\', '/');
+                picked = picked.Replace('\\', '/');
+                if (picked.StartsWith(dataPath))
+                    _scanFolder = "Assets" + picked.Substring(dataPath.Length);
+            }
+        }
+
+        GUILayout.Space(10);
+
         if (_graph != null && _graph.Nodes.Count > 0)
         {
             int edgeCount = 0;
@@ -95,12 +115,17 @@ public class DependencyGraphWindow : EditorWindow
                 edgeCount += n.DependsOn.Count;
             GUILayout.Label($"{_graph.Nodes.Count} scripts, {edgeCount} dependencies");
         }
-        else
-        {
-            GUILayout.Label("Click Scan to analyze scripts");
-        }
 
         GUILayout.FlexibleSpace();
+
+        if (GUILayout.Button($"{Mathf.RoundToInt(_zoom * 100)}%", EditorStyles.toolbarButton, GUILayout.Width(45)))
+        {
+            _zoom = 1f;
+            if (_graph != null && _graph.Nodes.Count > 0)
+                CenterGraph();
+            Repaint();
+        }
+
         GUILayout.EndHorizontal();
     }
 
@@ -108,8 +133,8 @@ public class DependencyGraphWindow : EditorWindow
     {
         GUILayout.Space(40);
         EditorGUILayout.HelpBox(
-            "No scripts found under Assets/_Project/Scripts/ (excluding Editor/).\n" +
-            "Add scripts and click Scan.",
+            $"No scripts found under {_scanFolder} (excluding Editor/).\n" +
+            "Add scripts and click Scan, or use Browse to pick a different folder.",
             MessageType.Info);
     }
 
@@ -119,16 +144,12 @@ public class DependencyGraphWindow : EditorWindow
         for (int i = 0; i < _graph.Nodes.Count; i++)
         {
             var node = _graph.Nodes[i];
-            var screenRect = new Rect(
-                node.Rect.x + _panOffset.x,
-                node.Rect.y + _panOffset.y + ToolbarHeight,
-                node.Rect.width,
-                node.Rect.height);
+            var screenRect = GetScreenRect(node);
 
             var newRect = GUI.Window(i, screenRect, DrawNodeContent, GUIContent.none, _nodeStyle);
 
-            node.Rect.x = newRect.x - _panOffset.x;
-            node.Rect.y = newRect.y - _panOffset.y - ToolbarHeight;
+            node.Rect.x = (newRect.x - _panOffset.x) / _zoom;
+            node.Rect.y = (newRect.y - _panOffset.y - ToolbarHeight) / _zoom;
         }
         EndWindows();
     }
@@ -190,6 +211,25 @@ public class DependencyGraphWindow : EditorWindow
         Handles.EndGUI();
     }
 
+    void HandleZoom()
+    {
+        var e = Event.current;
+        if (e.type != EventType.ScrollWheel) return;
+
+        float oldZoom = _zoom;
+        float zoomDelta = -e.delta.y * 0.05f;
+        _zoom = Mathf.Clamp(_zoom + zoomDelta, ZoomMin, ZoomMax);
+
+        if (Mathf.Approximately(oldZoom, _zoom)) return;
+
+        Vector2 mouseScreen = e.mousePosition;
+        Vector2 mouseGraph = (mouseScreen - _panOffset - new Vector2(0, ToolbarHeight)) / oldZoom;
+        _panOffset = mouseScreen - new Vector2(0, ToolbarHeight) - mouseGraph * _zoom;
+
+        e.Use();
+        Repaint();
+    }
+
     void HandlePanning()
     {
         var e = Event.current;
@@ -243,10 +283,10 @@ public class DependencyGraphWindow : EditorWindow
     Rect GetScreenRect(ScriptNode node)
     {
         return new Rect(
-            node.Rect.x + _panOffset.x,
-            node.Rect.y + _panOffset.y + ToolbarHeight,
-            node.Rect.width,
-            node.Rect.height);
+            node.Rect.x * _zoom + _panOffset.x,
+            node.Rect.y * _zoom + _panOffset.y + ToolbarHeight,
+            node.Rect.width * _zoom,
+            node.Rect.height * _zoom);
     }
 
     int CountReferencesTo(string typeName)

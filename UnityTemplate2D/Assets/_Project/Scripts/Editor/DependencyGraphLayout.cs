@@ -4,15 +4,16 @@ using UnityEngine;
 
 public static class DependencyGraphLayout
 {
-    const float NodeWidth = 180f;
     const float NodeHeight = 60f;
-    const float HSpacing = 60f;
-    const float VSpacing = 80f;
+    const float HSpacing = 50f;
+    const float VSpacing = 90f;
 
     public static void ApplyLayout(DependencyGraph graph, float startX, float startY)
     {
         var layers = ComputeLayers(graph);
-        AssignPositions(graph, layers, startX, startY);
+        var groups = GroupByLayer(graph, layers);
+        OrderByBarycenter(groups, graph, layers);
+        AssignPositions(groups, startX, startY);
     }
 
     static Dictionary<string, int> ComputeLayers(DependencyGraph graph)
@@ -23,6 +24,10 @@ public static class DependencyGraphLayout
 
         foreach (var node in graph.Nodes)
             GetLayer(node.TypeName, graph, layers, visited, inStack);
+
+        int maxLayer = layers.Count > 0 ? layers.Values.Max() : 0;
+        foreach (var key in layers.Keys.ToList())
+            layers[key] = maxLayer - layers[key];
 
         return layers;
     }
@@ -60,10 +65,8 @@ public static class DependencyGraphLayout
         return layer;
     }
 
-    static void AssignPositions(DependencyGraph graph, Dictionary<string, int> layers, float startX, float startY)
+    static Dictionary<int, List<ScriptNode>> GroupByLayer(DependencyGraph graph, Dictionary<string, int> layers)
     {
-        int maxLayer = layers.Count > 0 ? layers.Values.Max() : 0;
-
         var groups = new Dictionary<int, List<ScriptNode>>();
         foreach (var node in graph.Nodes)
         {
@@ -72,20 +75,107 @@ public static class DependencyGraphLayout
                 groups[layer] = new List<ScriptNode>();
             groups[layer].Add(node);
         }
+        return groups;
+    }
+
+    static void OrderByBarycenter(Dictionary<int, List<ScriptNode>> groups, DependencyGraph graph,
+        Dictionary<string, int> layers)
+    {
+        int maxLayer = groups.Keys.Count > 0 ? groups.Keys.Max() : 0;
+
+        if (groups.ContainsKey(0))
+            groups[0].Sort((a, b) => string.Compare(a.TypeName, b.TypeName));
+
+        for (int pass = 0; pass < 3; pass++)
+        {
+            for (int layer = 1; layer <= maxLayer; layer++)
+            {
+                if (!groups.ContainsKey(layer)) continue;
+                var prevLayer = groups.ContainsKey(layer - 1) ? groups[layer - 1] : null;
+                if (prevLayer == null) continue;
+
+                var prevPositions = new Dictionary<string, int>();
+                for (int i = 0; i < prevLayer.Count; i++)
+                    prevPositions[prevLayer[i].TypeName] = i;
+
+                groups[layer].Sort((a, b) =>
+                {
+                    float avgA = GetBarycenter(a, prevPositions, graph, layers, layer);
+                    float avgB = GetBarycenter(b, prevPositions, graph, layers, layer);
+                    return avgA.CompareTo(avgB);
+                });
+            }
+        }
+    }
+
+    static float GetBarycenter(ScriptNode node, Dictionary<string, int> prevPositions,
+        DependencyGraph graph, Dictionary<string, int> layers, int currentLayer)
+    {
+        int sum = 0;
+        int count = 0;
+
+        foreach (var dep in node.DependsOn)
+        {
+            if (prevPositions.TryGetValue(dep, out int pos))
+            {
+                sum += pos;
+                count++;
+            }
+        }
+
+        foreach (var other in graph.Nodes)
+        {
+            if (other.DependsOn.Contains(node.TypeName))
+            {
+                int otherLayer = layers.TryGetValue(other.TypeName, out var l) ? l : 0;
+                if (otherLayer == currentLayer - 1 && prevPositions.TryGetValue(other.TypeName, out int pos))
+                {
+                    sum += pos;
+                    count++;
+                }
+            }
+        }
+
+        return count > 0 ? (float)sum / count : float.MaxValue;
+    }
+
+    static void AssignPositions(Dictionary<int, List<ScriptNode>> groups, float startX, float startY)
+    {
+        float widestLayer = 0f;
+        foreach (var kvp in groups)
+        {
+            float w = ComputeLayerWidth(kvp.Value);
+            if (w > widestLayer) widestLayer = w;
+        }
+
+        float centerX = startX + widestLayer / 2f;
 
         foreach (var kvp in groups)
         {
             var nodesInLayer = kvp.Value;
-            nodesInLayer.Sort((a, b) => string.Compare(a.TypeName, b.TypeName));
-
+            float layerWidth = ComputeLayerWidth(nodesInLayer);
+            float layerStartX = centerX - layerWidth / 2f;
             float y = startY + kvp.Key * (NodeHeight + VSpacing);
+
+            float x = layerStartX;
             for (int i = 0; i < nodesInLayer.Count; i++)
             {
                 float nodeWidth = ComputeNodeWidth(nodesInLayer[i].TypeName);
-                float x = startX + i * (NodeWidth + HSpacing);
                 nodesInLayer[i].Rect = new Rect(x, y, nodeWidth, NodeHeight);
+                x += nodeWidth + HSpacing;
             }
         }
+    }
+
+    static float ComputeLayerWidth(List<ScriptNode> nodes)
+    {
+        float total = 0f;
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            total += ComputeNodeWidth(nodes[i].TypeName);
+            if (i < nodes.Count - 1) total += HSpacing;
+        }
+        return total;
     }
 
     public static float ComputeNodeWidth(string typeName)
