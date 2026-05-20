@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.eflatun.scenereference": "git+https://github.com/starikcetin/Eflatun.SceneReference.git#5.0.0",
+    "com.eflatun.scenereference": "git+https://github.com/starikcetin/Eflatun.SceneReference.git#upm",
     "com.kyrylokuzyk.primetween": "1.4.0",
     "com.youngwoocho02.unity-cli-connector": "https://github.com/youngwoocho02/unity-cli.git?path=unity-connector",
     "com.unity.feature.2d": "2.0.2",
