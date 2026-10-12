@@ -7,3 +7,6 @@
 ## Coding convention
 - Follow KISS and YAGNI.  Use DRY when something repeats 3 or more times.
 - Follow Unity architecture best practices.
+
+## Project information
+Read [README.md](README.md) for the project overview and layout. Keep all project-related information there, not in this file.

@@ -1,6 +1,6 @@
 # UnityXR
 
-A Unity 6 (`6000.5.11f1`) mixed-reality project template built on Unity's MR template. It uses URP, OpenXR (Android XR and Meta OpenXR), AR Foundation, XR Interaction Toolkit 3.5, XR Hands and Composition Layers. XR Simulation is configured for testing in the Editor. The sibling folders `../Unity2D` and `../Unity3D` are separate templates.
+A Unity 6 (`6000.5.11f1`) mixed-reality project template built on Unity's MR template. It uses URP, OpenXR (Android XR and Meta OpenXR), AR Foundation, XR Interaction Toolkit 3.5, XR Hands and Composition Layers. XR Simulation is configured for testing in the Editor.
 
 ## Project layout
 - `Assets/_Project/` holds this project's own content (Scripts, Prefabs, Scenes, Models, Shaders, Editor). It is empty except for `Scenes/TestScene.unity`.
