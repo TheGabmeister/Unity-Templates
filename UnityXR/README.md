@@ -23,4 +23,4 @@ A Unity 6 (`6000.5.11f1`) mixed-reality project template built on Unity's MR tem
 - Only the Standalone (Editor) loader changes. Android builds always use OpenXR.
 - Don't run Link mode with the simulator enabled. The simulator removes real headsets from the Input System and stops real hand tracking, so the Quest would show the image but not track.
 - The mode is saved in `Assets/XR/XRGeneralSettingsPerBuildTarget.asset` and `Assets/XRI/Settings/Resources/XRDeviceSimulatorSettings.asset`, so a switch shows up in git. Switch back to Simulation before committing.
-- From the CLI: `unity command menu -- --path "Tools/XR Mode/Simulation"` (or `.../Link`).
+- From the CLI: `unity command editor.invoke_menu -- --path "Tools/XR Mode/Simulation"` (or `.../Link`).
