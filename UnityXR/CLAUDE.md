@@ -22,6 +22,9 @@ Run these from the project root (`UnityXR/`). The CLI reads the Editor version f
 - Recompile the running Editor and report compile errors: `unity recompile`
 - Run tests: `unity test --mode EditMode` or `unity test --mode PlayMode`. Results go to `test-results.xml`.
 - Run a single test: `unity test --filter <TestName>`
-- Build for Android: `unity build --target Android -o <output.apk>`. Meta Quest and other partner platforms build from a build profile (`--create-profile`, then `--profile`). No profiles exist yet.
+- Build for Quest (Editor closed): `unity build --target Android -o Builds/<Name>.apk`. With the Editor open: `unity command build run -- --target Android --outputPath Builds/<Name>.apk --confirm true`, then poll `unity command build status` until `completed`.
+
+## Build profiles
+Never create a build profile (no `--create-profile`, no `build create_profile`, nothing under `Assets/Settings/Build Profiles/`), including for Meta Quest. Build Quest apps from the default Android platform with Project Settings. The OpenXR Meta Quest feature already adds hand tracking, passthrough and Quest device support, and a profile only adds a second copy of the Player and Quality settings that drifts from Project Settings.
 
 The Test Framework package is installed, but the project has no tests yet.
