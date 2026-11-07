@@ -7,7 +7,7 @@ At the start of every session, before doing any other work:
 1. Check that the Unity CLI works (e.g. run `unity --version`).
 2. Check that the Unity skills (`unity:*`, e.g. `unity:unity-cli`) are installed and available.
 
-If either check fails, stop whatever you're doing and tell the user to finish this setup first. Do not continue with the task until it's resolved.
+If either check fails, tell the user what's missing so they can finish this setup, then continue with the task.
 
 ## Coding convention
 - Follow KISS and YAGNI.  Use DRY when something repeats 3 or more times.
